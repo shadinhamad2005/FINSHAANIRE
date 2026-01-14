@@ -664,7 +664,7 @@
             c.innerHTML = `<div class="max-w-md mx-auto bg-slate-50 p-10 rounded-[3rem] border space-y-6 text-center shadow-xl">
                 <p class="text-[10px] font-black uppercase">Entity: ${d.party}</p>
                 <p class="text-3xl font-black">${d.amount} <span class="text-xs opacity-30">${d.currency}</span></p>
-                <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Enter Volume</label><input type="number" id="samt" step="0.01" value="${d.amount}" class="w-full p-4 border rounded-xl font-black text-xl text-center outline-none"></div>
+                <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Enter Volume (${d.currency})</label><input type="number" id="samt" step="0.01" value="${d.amount}" class="w-full p-4 border rounded-xl font-black text-xl text-center outline-none"></div>
                 <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Select account</label><select id="sacc" class="w-full p-4 border rounded-xl bg-white font-bold text-center">${state.data.accounts.map(acc=>`<option value="${acc.id}">${acc.name} (${acc.currency})</option>`).join('')}</select></div>
                 <button id="btn-finalize-settle" onclick="window.finalizeSettle('${id}')" class="w-full bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase shadow-lg text-center text-center">Authorize Movement</button>
             </div>`;
@@ -672,19 +672,42 @@
         };
 
         window.finalizeSettle = async function(id) {
-            const aId = document.getElementById('sacc').value, amt = parseFloat(document.getElementById('samt').value);
-            const dIdx = state.data.debts.findIndex(d => d.id === id), d = state.data.debts[dIdx], aIdx = state.data.accounts.findIndex(a=>a.id===aId);
-            if (aIdx === -1 || isNaN(amt) || amt <= 0 || amt > d.amount) return;
+            const aId = document.getElementById('sacc').value;
+            const enteredAmt = parseFloat(document.getElementById('samt').value); // Amount in Debt Currency
+            
+            const dIdx = state.data.debts.findIndex(d => d.id === id);
+            const d = state.data.debts[dIdx];
+            const aIdx = state.data.accounts.findIndex(a=>a.id===aId);
+            
+            if (aIdx === -1 || isNaN(enteredAmt) || enteredAmt <= 0 || enteredAmt > d.amount) return;
             
             window.setBtnLoading('btn-finalize-settle', true);
 
-            const currentBal = state.data.accounts[aIdx].balance;
-            state.data.accounts[aIdx].balance = window.toCurrency(d.type==='receivable' ? currentBal + amt : currentBal - amt);
+            const acc = state.data.accounts[aIdx];
+            const rate = state.data.settings.rate;
+            let finalTxAmt = enteredAmt; // Amount to affect the Account Balance
+
+            // Currency Conversion Logic
+            if (d.currency !== acc.currency) {
+                if (d.currency === 'AED' && acc.currency === 'INR') finalTxAmt = enteredAmt * rate;
+                else if (d.currency === 'INR' && acc.currency === 'AED') finalTxAmt = enteredAmt / rate;
+            }
+
+            const currentBal = acc.balance;
+            state.data.accounts[aIdx].balance = window.toCurrency(d.type==='receivable' ? currentBal + finalTxAmt : currentBal - finalTxAmt);
             
-            state.data.transactions.push({ id: window.genId(), accountId: aId, amount: window.toCurrency(amt), type: d.type==='receivable'?'income':'expense', category: 'Settlement', note: d.party, date: new Date().toISOString() });
+            state.data.transactions.push({ 
+                id: window.genId(), 
+                accountId: aId, 
+                amount: window.toCurrency(finalTxAmt), // Log amount in Account Currency
+                type: d.type==='receivable'?'income':'expense', 
+                category: 'Settlement', 
+                note: `${d.party} (${enteredAmt} ${d.currency})`, 
+                date: new Date().toISOString() 
+            });
             
-            if (amt === d.amount) state.data.debts[dIdx].settled = true; 
-            else state.data.debts[dIdx].amount = window.toCurrency(d.amount - amt);
+            if (enteredAmt === d.amount) state.data.debts[dIdx].settled = true; 
+            else state.data.debts[dIdx].amount = window.toCurrency(d.amount - enteredAmt);
             
             await updateDb(); renderApp();
             document.getElementById('modal-content').innerHTML = `<div class="flex flex-col items-center justify-center space-y-4 py-20 fade-in text-center text-center"><div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-center"><i data-lucide="check-circle-2" class="w-10 h-10"></i></div><h3 class="text-2xl font-black">Success!</h3><button onclick="window.closeModal()" class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold uppercase text-[10px] text-center">Done</button></div>`;
