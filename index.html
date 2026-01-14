@@ -321,7 +321,12 @@
             const body = document.getElementById('master-ledger-body'); if (!body) return;
             const sorted = [...items].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
             body.innerHTML = sorted.map(t => {
-                const accName = state.data.accounts.find(a=>a.id===t.accountId)?.name||'N/A';
+                let accName = 'N/A';
+                if (t.accountId === 'virtual_writeoff') {
+                    accName = 'Write-off Record';
+                } else {
+                    accName = state.data.accounts.find(a=>a.id===t.accountId)?.name||'N/A';
+                }
                 const isTransfer = t.type.includes('transfer');
                 const isIncome = t.type === 'income' || t.type === 'transfer_in';
                 const colorClass = isTransfer ? 'text-slate-500' : (isIncome ? 'text-emerald-500' : 'text-red-400');
@@ -556,7 +561,8 @@
         window.writeOffDebt = async function(id) {
             const dIdx = state.data.debts.findIndex(i => i.id === id);
             const d = state.data.debts[dIdx];
-            const msg = d.type === 'receivable' ? 
+            const isReceivable = d.type === 'receivable';
+            const msg = isReceivable ? 
                 "Write off this Bad Debt? (Records as Expense, no cash received)" : 
                 "Mark as Forgiven? (Records as Income, no cash paid)";
             
@@ -564,15 +570,17 @@
 
             state.data.debts[dIdx].settled = true;
             
-            // Log for analytics only (no account balance change)
-            // We use a dummy account ID 'writeoff' or just store it for records?
-            // Better approach: Don't link to account, just let it sit in history? 
-            // Actually, user wants to see it. Let's not add to transactions to avoid messing up Account Balance logic.
-            // But user asked for "records it as a loss". 
-            // Since we don't have a "General Ledger" separate from Accounts, simply marking it Settled is safest for balance.
-            // However, to show up in "Expense" charts, we would need a dummy transaction. 
-            // For now, let's keep it simple: Just mark settled. It won't show in Expense charts, but won't be in Assets anymore.
-            // This correctly reduces Net Wealth (Asset removed).
+            // Create a Ledger Entry for the Record
+            state.data.transactions.push({
+                id: window.genId(),
+                accountId: 'virtual_writeoff', // Special ID
+                amount: window.toCurrency(d.amount),
+                currency: d.currency, // Store currency directly in transaction for these cases
+                type: isReceivable ? 'expense' : 'income', // Expense = Loss of asset, Income = Loss of liability
+                category: isReceivable ? 'Bad Debt' : 'Forgiven Debt',
+                note: `Write-off: ${d.party}`,
+                date: new Date().toISOString()
+            });
             
             await updateDb();
             window.renderDebtUI();
