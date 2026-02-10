@@ -3119,15 +3119,29 @@
                     </div>
                 </div>
                 
-                <!--3.5 AUTOMATION API (New)-->
-                <div class="bg-indigo-50 p-6 rounded-[2.5rem] border border-indigo-100 flex flex-col justify-center text-center">
-                    <div class="flex items-center justify-center gap-2 mb-2">
-                        <i data-lucide="bot" class="w-4 h-4 text-indigo-500"></i>
-                         <p class="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Whapi Automation</p>
+                <!--3.5 MESSAGING INFRASTRUCTURE (Universal)-->
+                <div class="bg-indigo-50 p-6 rounded-[3rem] border border-indigo-100 flex flex-col justify-center text-center">
+                    <div class="flex items-center justify-center gap-2 mb-4">
+                        <i data-lucide="message-square" class="w-4 h-4 text-indigo-500"></i>
+                        <p class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Messaging Infrastructure</p>
                     </div>
-                    <input type="password" id="sets-whapi" value="${state.data.settings.whapiToken || ''}" placeholder="Paste Whapi Token Here" class="w-full p-3 bg-white border rounded-xl text-center font-bold text-xs outline-none focus:border-indigo-500 focus:ring-2 ring-indigo-100 mb-2">
-                    <input type="tel" id="sets-myphone" value="${state.data.settings.myPhone || ''}" placeholder="My Phone (e.g. 97150...)" class="w-full p-3 bg-white border rounded-xl text-center font-bold text-xs outline-none focus:border-indigo-500 focus:ring-2 ring-indigo-100">
-                     <p class="text-[8px] text-indigo-300 mt-2 font-bold">Token for API & Phone for Self-Reminders.</p>
+                    
+                    <!-- Mode Toggle -->
+                    <div class="flex items-center justify-between p-3 bg-white rounded-2xl border border-indigo-100 mb-4">
+                        <span class="text-xs font-bold text-slate-600">Auto-Messaging (API)</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="sets-auto-msg" class="sr-only peer" ${state.data.settings.isAutoMessagingEnabled ? 'checked' : ''}>
+                            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                        </label>
+                    </div>
+
+                    <p class="text-[9px] font-bold text-indigo-400 uppercase text-left ml-1 mb-1">Universal API Token</p>
+                    <input type="password" id="sets-whapi" value="${state.data.settings.messagingToken || state.data.settings.whapiToken || ''}" placeholder="Paste API Token Here" class="w-full p-3 bg-white border rounded-xl text-center font-bold text-xs outline-none focus:border-indigo-500 focus:ring-2 ring-indigo-100 mb-4">
+                    
+                    <p class="text-[9px] font-bold text-indigo-400 uppercase text-left ml-1 mb-1">My Phone (Self Reminders)</p>
+                    <input type="tel" id="sets-myphone" value="${state.data.settings.myPhone || ''}" placeholder="97150..." class="w-full p-3 bg-white border rounded-xl text-center font-bold text-xs outline-none focus:border-indigo-500 focus:ring-2 ring-indigo-100">
+                    
+                    <p class="text-[8px] text-indigo-300 mt-2 font-bold leading-relaxed">Toggle OFF for Manual drafting via WhatApp. Toggle ON for background API automation.</p>
                 </div>
 
                 <!--4. COMMODITY RATES-->
@@ -3268,8 +3282,9 @@
             state.data.settings.budgetAlertLimit = parseFloat(document.getElementById('sets-alert').value) || 80;
             state.data.settings.minRunwayMonths = parseFloat(document.getElementById('sets-runway').value) || 6;
 
-            // Whapi Token
-            state.data.settings.whapiToken = document.getElementById('sets-whapi').value.trim();
+            // Messaging Infrastructure
+            state.data.settings.isAutoMessagingEnabled = document.getElementById('sets-auto-msg').checked;
+            state.data.settings.messagingToken = document.getElementById('sets-whapi').value.trim();
             state.data.settings.myPhone = document.getElementById('sets-myphone').value.trim();
 
             // Theme is already set in state via previewTheme, just persisting now.
@@ -3527,25 +3542,16 @@
         };
 
         // WHATSAPP INTEGRATION
-        // WHATSAPP INTEGRATION
+        // UNIVERSAL MESSAGING HANDLER
         window.sendWhapiReminder = async function (name, debtDetails, isRaw = false) {
-            // 1. Get Token
-            const token = state.data.settings.whapiToken;
-            if (!token) {
-                window.showPrompt("Whapi Token Required", "Enter your Whapi API Token to enable automation:", async (val) => {
-                    if (val) {
-                        state.data.settings.whapiToken = val.trim();
-                        await updateDb();
-                        window.sendWhapiReminder(name, debtDetails, isRaw); // Retry
-                    }
-                });
-                return;
-            }
+            const isAuto = state.data.settings.isAutoMessagingEnabled;
+            const token = state.data.settings.messagingToken || state.data.settings.whapiToken;
+            const msgBody = isRaw ? debtDetails : `Hi ${name}, just a quick reminder regarding the ${debtDetails}. Let me know when you can settle this. Thanks!`;
 
-            // 2. Get Contact & Phone
+            // Get Contact & Phone
             const contact = (state.data.contacts && state.data.contacts.find(c => c.name === name));
             if (!contact || !contact.phone) {
-                window.showPrompt(`Phone for ${name}`, "Enter Mobile Number (e.g. 971501234567):", (val) => {
+                window.showPrompt(`Phone for ${name}`, "Enter Mobile Number (e.g. 97150...):", (val) => {
                     if (val) {
                         if (!state.data.contacts) state.data.contacts = [];
                         let c = state.data.contacts.find(x => x.name === name);
@@ -3558,44 +3564,38 @@
                 return;
             }
 
-            // 3. Prepare Payload
-            // 3. Prepare Payload
             const cleanPhone = contact.phone.replace(/[^0-9]/g, '');
-            const msgBody = isRaw ? debtDetails : `Hi ${name}, just a quick reminder regarding the ${debtDetails}. Let me know when you can settle this. Thanks!`;
 
-            // UI Feedback
-            window.showToast("🚀 Sending via Whapi...", "info");
-
-            try {
-                const res = await fetch('https://gate.whapi.cloud/messages/text', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        to: cleanPhone,
-                        body: msgBody
-                    })
-                });
-
-                if (res.ok) {
-                    window.showToast("Message Sent Successfully! ✅", "success");
-                } else {
-                    const err = await res.json();
-                    console.error("Whapi Error:", err);
-                    window.showToast("Failed to send. Check console.", "error");
+            if (isAuto && token) {
+                // AUTO MODE: Send via API
+                window.showToast("🚀 Sending via API...", "info");
+                try {
+                    const res = await fetch('https://gate.whapi.cloud/messages/text', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ to: cleanPhone, body: msgBody })
+                    });
+                    if (res.ok) window.showToast("Message Sent! ✅", "success");
+                    else window.showToast("API Error. Check Settings.", "error");
+                } catch (error) {
+                    window.showToast("Network Error.", "error");
                 }
-            } catch (error) {
-                console.error("Whapi Network Error:", error);
-                window.showToast("Network Error. Check connection.", "error");
+            } else {
+                // MANUAL MODE: Open WhatsApp Draft
+                window.showToast("📲 Opening WhatsApp Draft...", "info");
+                const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgBody)}`;
+                window.open(url, '_blank');
             }
         };
 
         // DAILY AUTOMATION LOGIC (Self + Peer)
         window.checkSelfReminders = async function () {
             // 1. Check prerequisites
-            const token = state.data.settings.whapiToken;
+            if (!state.data.settings.isAutoMessagingEnabled) return;
+            const token = state.data.settings.messagingToken || state.data.settings.whapiToken;
             if (!token) return;
 
             // 2. Check frequency (Once per day)
@@ -6604,6 +6604,11 @@
                         state.data.accounts.forEach(a => {
                             if (!a.currency) a.currency = 'INR'; // Default fallback
                         });
+
+                        // Messaging Migration
+                        if (state.data.settings.whapiToken && !state.data.settings.messagingToken) {
+                            state.data.settings.messagingToken = state.data.settings.whapiToken;
+                        }
                         try {
                             window.checkDueDebts();
                             window.checkSelfReminders();
