@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finshaanire | Wealth Hub</title>
+    <title>Finshaanire v2.5 | Wealth Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -20,8 +20,21 @@
             document.body.appendChild(box);
             return false;
         };
+
+        // Helper: Currency Conversion (INR/Other -> AED Base)
+        window.convert = function (amt, currency) {
+            let r = 22.75; // Fallback
+            if (typeof state !== 'undefined' && state.data && state.data.settings) {
+                r = state.data.settings.rate;
+            }
+            if (currency === 'AED') return parseFloat(amt);
+            if (currency === 'INR') return parseFloat(amt) / r;
+            return parseFloat(amt);
+        };
     </script>
-    </style>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -1790,7 +1803,13 @@
 
                 // 2. Check Filter Chip
                 let matchesFilter = true;
-                if (filter === 'income') matchesFilter = (t.type === 'income' || t.type === 'transfer_in');
+                if (filter === 'income') {
+                    // Exclude non-income inflows
+                    const isExcluded = ['Settlement', 'Loan', 'Debt', 'Opening Balance', 'Initial', 'Credit'].some(k =>
+                        (t.category && t.category.includes(k)) || (t.note && t.note.includes(k))
+                    );
+                    matchesFilter = (t.type === 'income' || t.type === 'transfer_in') && !isExcluded;
+                }
                 else if (filter === 'expense') matchesFilter = (t.type === 'expense' || t.type === 'transfer_out');
                 else if (filter === 'transfer') matchesFilter = t.type.includes('transfer');
                 else if (filter === 'high') matchesFilter = parseFloat(t.amount) > 5000;
@@ -2150,7 +2169,7 @@
                 case 'debt': t.innerText = 'Liability Management'; c.innerHTML = window.renderDebtUI(); break;
                 case 'settings': t.innerText = 'Configuration Hub'; c.innerHTML = window.renderSettingsUI(); break;
                 case 'reports': t.innerText = 'Summaries'; c.innerHTML = window.renderDistributionInsights(); break;
-                case 'analytics': t.innerText = 'Financial Health Board'; window.renderAnalytics(); break;
+                case 'analytics': t.innerText = 'Financial Health Board'; window.renderDashboard(); break;
                 case 'budget': t.innerText = 'Monthly Budgeting'; c.innerHTML = window.renderBudgetUI(); break;
                 case 'performance': t.innerText = 'Portfolio Growth'; c.innerHTML = window.renderPerformance(); break;
                 // Goals removed
@@ -2160,6 +2179,38 @@
                 // NEW FEATURES
                 case 'remittance': t.innerText = 'Arbitrage Tracker'; c.innerHTML = window.renderRemittance(); setTimeout(window.renderRemitChart, 300); break;
                 case 'zakat': t.innerText = 'Zakat Calculator'; c.innerHTML = window.renderZakatCalculator(); break;
+                case 'allocation':
+                    t.innerText = 'Robot Strategy';
+                    const targets = state.data.allocationTargets || { 'Equity': 50, 'Gold': 20, 'Cash': 30, 'Real Estate': 0 };
+                    c.innerHTML = `
+                        <div class="max-w-md mx-auto bg-white p-8 rounded-[3rem] border shadow-xl text-center space-y-6">
+                            <p class="text-sm text-slate-500 font-bold">Define your ideal portfolio mix.</p>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Equity (Stocks/MF)</label>
+                                    <input type="number" id="alloc-equity" value="${targets['Equity']}" class="w-full p-4 border rounded-xl font-black text-center text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0">
+                                </div>
+                                <div>
+                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Gold (Commodities)</label>
+                                    <input type="number" id="alloc-gold" value="${targets['Gold']}" class="w-full p-4 border rounded-xl font-black text-center text-amber-500 outline-none focus:ring-2 focus:ring-amber-500" placeholder="0">
+                                </div>
+                                <div>
+                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Cash (Bank/Savings)</label>
+                                    <input type="number" id="alloc-cash" value="${targets['Cash']}" class="w-full p-4 border rounded-xl font-black text-center text-blue-500 outline-none focus:ring-2 focus:ring-blue-500" placeholder="0">
+                                </div>
+                                <div>
+                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Real Estate</label>
+                                    <input type="number" id="alloc-re" value="${targets['Real Estate']}" class="w-full p-4 border rounded-xl font-black text-center text-indigo-500 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0">
+                                </div>
+                            </div>
+                            
+                            <button onclick="window.saveAllocationTargetsFromModal()" class="w-full bg-slate-900 text-white p-5 rounded-2xl font-black uppercase shadow-xl hover:bg-emerald-600 transition-all">
+                                Update Strategy
+                            </button>
+                        </div>
+                    `;
+                    break;
 
                 case 'sweep':
                     t.innerText = 'Budget Sweep';
@@ -2200,12 +2251,15 @@
             lucide.createIcons();
         };
 
-        window.editAllocationTargets = async function () {
-            const targets = state.data.allocationTargets || { 'Equity': 50, 'Gold': 20, 'Cash': 30, 'Real Estate': 0 };
-            const eq = parseFloat(prompt("Target % for EQUITY (Stocks/MF)?", targets['Equity'])) || 0;
-            const gold = parseFloat(prompt("Target % for GOLD (Commodities)?", targets['Gold'])) || 0;
-            const cash = parseFloat(prompt("Target % for CASH (Bank/Savings)?", targets['Cash'])) || 0;
-            const re = parseFloat(prompt("Target % for REAL ESTATE?", targets['Real Estate'])) || 0;
+        window.editAllocationTargets = function () {
+            window.openModal('allocation');
+        };
+
+        window.saveAllocationTargetsFromModal = async function () {
+            const eq = parseFloat(document.getElementById('alloc-equity').value) || 0;
+            const gold = parseFloat(document.getElementById('alloc-gold').value) || 0;
+            const cash = parseFloat(document.getElementById('alloc-cash').value) || 0;
+            const re = parseFloat(document.getElementById('alloc-re').value) || 0;
 
             const total = eq + gold + cash + re;
             if (Math.abs(total - 100) > 1) {
@@ -2214,7 +2268,9 @@
             }
 
             state.data.allocationTargets = { 'Equity': eq, 'Gold': gold, 'Cash': cash, 'Real Estate': re };
-            await updateDb(); window.renderApp();
+            await updateDb();
+            window.closeModal();
+            window.renderApp(); // Re-render to update the robot view
         };
 
         window.renderPerformance = function () {
@@ -2665,6 +2721,18 @@
                                         ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
                                     </select>
                                 </div>
+                                
+                                <!-- NEW FIELDS: Billing Cycle & Free Trial -->
+                                <div class="grid grid-cols-2 gap-4">
+                                     <select id="sub-cycle" class="p-3 border rounded-xl font-bold text-sm bg-white">
+                                        <option value="Monthly">Monthly</option>
+                                        <option value="Yearly">Yearly</option>
+                                    </select>
+                                    <div class="relative">
+                                        <label class="absolute -top-2 left-2 px-1 bg-white text-[9px] font-bold text-slate-400">Free Trial Ends (Opt)</label>
+                                        <input type="date" id="sub-trial" class="w-full p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500 text-slate-600">
+                                    </div>
+                                </div>
                                 <button onclick="window.addSubscription()" class="w-full bg-slate-900 text-white p-3 rounded-xl font-black uppercase shadow-lg text-xs">Create Schedule</button>
                         </div>
                 </div>
@@ -2676,7 +2744,11 @@
                 return `<div class="bg-white p-5 rounded-[2rem] border shadow-sm flex justify-between items-center group">
                             <div class="text-left">
                                 <p class="font-black text-slate-800">${s.name}</p>
-                                <p class="text-[9px] font-bold text-slate-400 uppercase">Next: ${new Date(s.nextDate).toLocaleDateString()} • Day ${s.day}</p>
+                                <p class="text-[9px] font-bold text-slate-400 uppercase">
+                                    ${s.billingCycle || 'Monthly'} • Next: ${new Date(s.nextDate).toLocaleDateString()}
+                                    ${s.freeTrialEndDate && new Date(s.freeTrialEndDate) > new Date() ?
+                        `<span class="ml-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[8px] font-black">TRIAL</span>` : ''}
+                                </p>
                                 ${acc ? `<p class="text-[8px] font-bold text-emerald-600 uppercase mt-0.5"><i data-lucide="link" class="w-3 h-3 inline"></i> ${acc.name}</p>` : ''}
                             </div>
                             <div class="text-right">
@@ -2698,6 +2770,9 @@
             // Capture target if transfer
             const targetAccId = document.getElementById('sub-target-acc') ? document.getElementById('sub-target-acc').value : null;
 
+            const cycle = document.getElementById('sub-cycle').value || 'Monthly';
+            const trial = document.getElementById('sub-trial').value || null;
+
             if (!name || isNaN(amount) || isNaN(day) || !accId) {
                 window.showToast("Please fill all required fields.", "error");
                 return;
@@ -2710,7 +2785,9 @@
 
             if (!state.data.subscriptions) state.data.subscriptions = [];
 
-            // Calc next date: If today> day, then next month. Else this month.
+            // Calc next date: If today > day, then next month. Else this month.
+            // Support Yearly cycle? For now, logic defaults to Monthly for 'nextDate' calc initially.
+            // We can refine nextDate logic later if needed.
             const d = new Date();
             if (d.getDate() > day) d.setMonth(d.getMonth() + 1);
             d.setDate(day);
@@ -2719,6 +2796,8 @@
                 id: window.genId(),
                 name, amount, type,
                 day,
+                billingCycle: cycle,
+                freeTrialEndDate: trial,
                 nextDate: d.toISOString(),
                 accountId: accId,
                 targetAccountId: targetAccId || null,
@@ -2841,109 +2920,291 @@
             document.getElementById('sip-result').innerText = '₹' + Math.round(FV).toLocaleString();
         };
 
-        window.renderAnalytics = function () {
+        window.renderDashboard = function () {
             const c = document.getElementById('modal-content');
 
-            // Calc Metrics for Runway
+            // --- DATA PREP ---
             const r = state.data.settings.rate;
+            const d = new Date(); d.setMonth(d.getMonth() - 1); // Last 30 Days snapshot for velocity/rhythm
+            const txs = state.data.transactions;
+
+            // 1. CALC FINANCIAL HEALTH SCORE VARIABLES
+            // A. Savings Rate (Last 30 Days)
+            const last30Inc = txs.filter(t => t.type === 'income' && new Date(t.date) >= d).reduce((s, t) => s + Number(window.convert(t.amount, t.currency || 'AED')), 0);
+            const last30Exp = txs.filter(t => t.type === 'expense' && new Date(t.date) >= d).reduce((s, t) => s + Number(window.convert(t.amount, t.currency || 'AED')), 0);
+            const savingsRate = last30Inc > 0 ? Math.max(0, ((last30Inc - last30Exp) / last30Inc) * 100) : 0;
+
+            // B. Runway (Months)
             const liquid = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).reduce((s, a) => s + (a.currency === 'AED' ? a.balance * r : a.balance), 0);
-            const d = new Date(); d.setMonth(d.getMonth() - 6);
-            const recentExp = state.data.transactions.filter(t => t.type === 'expense' && new Date(t.date) >= d).reduce((s, t) => { const acc = state.data.accounts.find(a => a.id === t.accountId); const cur = t.currency || acc?.currency || 'AED'; return s + (Number(t.amount) * (cur === 'AED' ? r : 1)); }, 0);
-            const avgMonthlyExp = recentExp / 6;
-            const runwayMonths = avgMonthlyExp > 0 ? (liquid / avgMonthlyExp).toFixed(1) : '∞';
+            const avgExp = last30Exp > 0 ? last30Exp : 1; // Avoid div by 0
+            const runway = liquid / avgExp;
 
-            c.innerHTML = `<div class="space-y-12 py-4 text-center">
-                
-                <!--NEW: Runway Card-->
-                <div class="bg-slate-900 text-white p-8 rounded-[3rem] shadow-xl text-center relative overflow-hidden">
-                    <div class="relative z-10">
-                        <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Financial Runway</p>
-                        <h2 class="text-5xl font-black text-emerald-400 mb-1">${runwayMonths} <span class="text-lg text-slate-500">Months</span></h2>
-                        <p class="text-xs font-bold text-slate-500">Survival time on liquid cash alone</p>
-                    </div>
-                    <div class="absolute top-0 right-0 p-10 opacity-10"><i data-lucide="shield" class="w-32 h-32"></i></div>
-                </div>
+            // C. Debt Load (Debt / Assets)
+            const totalAssets = state.data.accounts.reduce((s, a) => s + (a.currency === 'AED' ? a.balance * r : a.balance), 0);
+            const totalDebt = state.data.debts.filter(d => !d.settled).reduce((s, d) => s + (d.currency === 'AED' ? d.amount * r : d.amount), 0);
+            const debtRatio = totalAssets > 0 ? (totalDebt / totalAssets) * 100 : 0;
 
-                <div class="bg-white p-8 rounded-[3rem] border shadow-sm text-center"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-[0.2em] text-center">Retention Ratio</h4><div class="max-w-[280px] mx-auto text-center text-center"><canvas id="savingsGauge"></canvas></div><div id="savingsRateTxt" class="text-3xl font-black text-emerald-500 mt-[-40px] text-center text-center">0%</div></div>
-                
-                <!--NEW: Expense Trend Chart-->
-                <div class="bg-white p-8 rounded-[3rem] border shadow-sm text-center">
-                    <h4 class="text-[10px] font-black uppercase text-slate-400 mb-6 text-center">Lifestyle Monitor (6 Months)</h4>
-                    <div class="h-64"><canvas id="lifestyleChart"></canvas></div>
-                </div>
+            // Score Formula: (Savings * 0.4) + (RunwayCapped * 0.4) + (DebtInverted * 0.2)
+            // Runway: 6 months = 100 pts. 
+            const sScore = Math.min(100, savingsRate * 2); // 50% savings = 100 pts
+            const rScore = Math.min(100, (runway / 6) * 100);
+            const dScore = Math.max(0, 100 - debtRatio);
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-center text-center"><div class="bg-white p-6 rounded-[3rem] border shadow-sm text-center text-center"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-6 text-center text-center">Equity vs Liability</h4><canvas id="debtRatioChart" height="150"></canvas></div><div class="bg-white p-6 rounded-[3rem] border shadow-sm text-center text-center text-center"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-6 text-center text-center">Cash vs Growth</h4><canvas id="liquidChart"></canvas></div></div>
-                <div class="bg-white p-8 rounded-[3rem] border shadow-sm text-center text-center text-center"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-6 text-center text-center">Cash Flow comparison</h4><canvas id="incomeVsExpenseBarChart" height="200"></canvas></div>
-                <div class="bg-white p-8 rounded-[3rem] border shadow-sm text-center text-center text-center"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-6 text-center text-center">Exposure Audit</h4><div class="max-w-[300px] mx-auto text-center text-center"><canvas id="currencyChart"></canvas></div></div>
-            </div> `;
-            const ts = [...state.data.transactions];
-            // Updated analytics to IGNORE internal transfers
-            const inc = ts.filter(t => t.type === 'income').reduce((s, t) => { const acc = state.data.accounts.find(a => a.id === t.accountId); const cur = t.currency || acc?.currency || 'AED'; return s + (Number(t.amount) * (cur === 'AED' ? r : 1)); }, 0);
-            const exp = ts.filter(t => t.type === 'expense').reduce((s, t) => { const acc = state.data.accounts.find(a => a.id === t.accountId); const cur = t.currency || acc?.currency || 'AED'; return s + (Number(t.amount) * (cur === 'AED' ? r : 1)); }, 0);
-            const sRate = inc > 0 ? Math.max(0, Math.round(((inc - exp) / inc) * 100)) : 0;
-            document.getElementById('savingsRateTxt').innerText = `${sRate}% `;
-            new Chart(document.getElementById('savingsGauge'), { type: 'doughnut', data: { datasets: [{ data: [sRate, 100 - sRate], backgroundColor: ['#10b981', '#f1f5f9'], borderWidth: 0 }] }, options: { rotation: 270, circumference: 180, cutout: '80%', plugins: { legend: { display: false } } } });
-            const totalAssets = state.data.accounts.reduce((s, a) => s + (a.balance * (a.currency === 'AED' ? r : 1)), 0), totalDebts = state.data.debts.filter(d => !d.settled && d.type === 'payable').reduce((s, d) => s + (Number(d.amount) * (d.currency === 'AED' ? r : 1)), 0);
-            new Chart(document.getElementById('debtRatioChart'), { type: 'bar', data: { labels: ['Wealth'], datasets: [{ label: 'Equity', data: [totalAssets - totalDebts], backgroundColor: '#10b981' }, { label: 'Liability', data: [totalDebts], backgroundColor: '#f87171' }] }, options: { indexAxis: 'y', scales: { x: { stacked: true, display: false }, y: { stacked: true, display: false } }, plugins: { legend: { position: 'bottom' } } } });
-            const cash = state.data.accounts.filter(a => ['Bank Account', 'Cash'].includes(a.type)).reduce((s, a) => s + (a.balance * (a.currency === 'AED' ? r : 1)), 0), inv = state.data.accounts.filter(a => !['Bank Account', 'Cash'].includes(a.type)).reduce((s, a) => s + (a.balance * (a.currency === 'AED' ? r : 1)), 0);
-            new Chart(document.getElementById('liquidChart'), { type: 'doughnut', data: { labels: ['Liquid', 'Invested'], datasets: [{ data: [cash, inv], backgroundColor: ['#3b82f6', '#10b981'], borderWidth: 0 }] }, options: { plugins: { legend: { position: 'bottom' } } } });
+            const healthScore = Math.round((sScore * 0.4) + (rScore * 0.4) + (dScore * 0.2));
+            const healthColor = healthScore > 80 ? '#10b981' : (healthScore > 50 ? '#f59e0b' : '#ef4444');
 
-            // Monthly Data prep
-            const monthly = {};
-            const trendCats = {}; // { 'Food': [100, 120, ...], ... }
-            const topCats = state.data.expenseCategories.slice(0, 3); // Track top 3 by default order
+            // 2. SPENDING RHYTHM (Day of Week)
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+            txs.filter(t => t.type === 'expense').forEach(t => {
+                const day = new Date(t.date).getDay();
+                dayCounts[day] += Number(window.convert(t.amount, t.currency || 'AED'));
+            });
 
-            for (let i = 5; i >= 0; i--) {
-                const d = new Date(); d.setMonth(d.getMonth() - i);
-                const m = d.toLocaleString('default', { month: 'short' });
-                monthly[m] = { income: 0, expense: 0 };
-                topCats.forEach(c => { if (!trendCats[c]) trendCats[c] = []; trendCats[c].push(0); });
-            }
+            // 3. EXPENSE RADAR (Categories)
+            const catMap = {};
+            txs.filter(t => t.type === 'expense').forEach(t => {
+                catMap[t.category] = (catMap[t.category] || 0) + Number(window.convert(t.amount, t.currency || 'AED'));
+            });
+            const top5Cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-            ts.forEach(t => {
-                const d = new Date(t.date);
-                const limit = new Date(); limit.setMonth(limit.getMonth() - 6);
-                if (d < limit) return;
+            // 4. FREEDOM RATIO (Fixed vs Free)
+            // Fixed = Sum of Subscriptions + Debt EMI (Approx)
+            const monthlyFixed = (state.data.subscriptions || []).reduce((s, sub) => s + Number(sub.amount), 0); // Simplified
+            const monthlyIncAvg = last30Inc || 1;
+            const fixedPct = Math.min(100, Math.round((monthlyFixed / monthlyIncAvg) * 100));
+            const freePct = 100 - fixedPct;
 
-                const m = d.toLocaleString('default', { month: 'short' });
-                if (monthly[m]) {
-                    const acc = state.data.accounts.find(a => a.id === t.accountId);
-                    const cur = t.currency || acc?.currency || 'AED';
-                    const v = Number(t.amount) * (cur === 'AED' ? r : 1);
+            // 5. ASSET POLAR (Type Distribution)
+            const assetMap = {};
+            state.data.accounts.forEach(a => {
+                const k = a.subtype || a.type; // Use subtype if valid (e.g. Gold), else type
+                const val = a.currency === 'AED' ? a.balance * r : a.balance;
+                if (val > 0) assetMap[k] = (assetMap[k] || 0) + val;
+            });
 
-                    if (t.type === 'income') monthly[m].income += v;
-                    else if (t.type === 'expense') {
-                        monthly[m].expense += v;
-                        if (topCats.includes(t.category)) {
-                            // Find index of month in labels
-                            const labels = Object.keys(monthly);
-                            const idx = labels.indexOf(m);
-                            if (idx > -1 && trendCats[t.category]) trendCats[t.category][idx] += v;
-                        }
-                    }
+            // --- OLD ANALYTICS LOGIC MERGE ---
+            // 1. Net Worth (Liquid + Invested - Debts)
+            let totalNW = 0;
+            state.data.accounts.forEach(a => totalNW += (a.currency === 'AED' ? a.balance * r : a.balance));
+            state.data.debts.forEach(d => {
+                if (!d.settled) {
+                    const val = Number(d.amount) * (d.currency === 'AED' ? r : 1);
+                    totalNW += (d.type === 'receivable' ? val : -val);
                 }
             });
 
-            new Chart(document.getElementById('incomeVsExpenseBarChart'), { type: 'bar', data: { labels: Object.keys(monthly), datasets: [{ label: 'Earnings', data: Object.values(monthly).map(v => v.income), backgroundColor: '#10b981' }, { label: 'Spending', data: Object.values(monthly).map(v => v.expense), backgroundColor: '#f87171' }] }, options: { scales: { x: { grid: { display: false } } } } });
+            // 2. Annual Expenses (Extrapolated from last 6 months)
+            const d6m = new Date(); d6m.setMonth(d6m.getMonth() - 6);
+            const recentExp = state.data.transactions.filter(t => t.type === 'expense' && new Date(t.date) >= d6m).reduce((s, t) => {
+                const acc = state.data.accounts.find(a => a.id === t.accountId);
+                const cur = t.currency || acc?.currency || 'AED';
+                return s + (Number(t.amount) * (cur === 'AED' ? r : 1));
+            }, 0);
 
-            // Lifestyle Chart
-            new Chart(document.getElementById('lifestyleChart'), {
-                type: 'line',
-                data: {
-                    labels: Object.keys(monthly),
-                    datasets: topCats.map((c, i) => ({
-                        label: c,
-                        data: trendCats[c],
-                        borderColor: ['#3b82f6', '#f59e0b', '#ec4899'][i % 3],
-                        tension: 0.4,
-                        fill: false
-                    }))
-                },
-                options: { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+            const avgMonthlyExpOLD = recentExp / 6;
+            const annualExp = avgMonthlyExpOLD * 12;
+
+            // Output Metrics
+            const freedomYears = annualExp > 0 ? (totalNW / annualExp).toFixed(1) : '∞';
+            const freedomDate = annualExp > 0 ? new Date(new Date().setFullYear(new Date().getFullYear() + parseFloat(freedomYears))) : 'Forever';
+            const dateStr = freedomDate === 'Forever' ? 'Infinity' : freedomDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+            // HTML MERGE
+            c.innerHTML = `
+            <div class="space-y-8 py-4">
+                <!-- 1. HEALTH SCORE (NEW) -->
+                <div class="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden text-center">
+                    <p class="text-[9px] font-black uppercase text-slate-500 tracking-widest mb-6">Financial Health Score</p>
+                    
+                    <div class="relative w-64 h-32 mx-auto">
+                        <svg viewBox="0 0 200 100" class="w-full h-full overflow-visible">
+                            <!-- Background Arc -->
+                            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e293b" stroke-width="20" stroke-linecap="round" />
+                            <!-- Value Arc -->
+                            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="${healthColor}" stroke-width="20" stroke-linecap="round" 
+                                stroke-dasharray="${(healthScore / 100) * 251.2} 251.2" />
+                            <!-- Text -->
+                            <text x="100" y="85" text-anchor="middle" font-size="50" font-weight="900" fill="white" style="font-family: 'Outfit', sans-serif;">${healthScore}</text>
+                        </svg>
+                    </div>
+                    <p class="text-[10px] font-bold text-slate-500 mt-6">Based on Savings, Runway & Debt</p>
+                </div>
+
+                <!-- 2. RHYTHM & RADAR (NEW) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Spending Rhythm</h4>
+                        <canvas id="rhythmChart" height="200"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Lifestyle Radar</h4>
+                        <canvas id="radarChart" height="200"></canvas>
+                    </div>
+                </div>
+
+                <!-- 3. FREEDOM & POLAR (NEW) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Freedom Ratio</h4>
+                        <div class="relative w-40 h-40 mx-auto">
+                            <canvas id="freedomChart"></canvas>
+                            <div class="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
+                                <span class="text-2xl font-black text-emerald-500">${freePct}%</span>
+                                <span class="text-[8px] font-bold text-slate-400 uppercase">Yours</span>
+                            </div>
+                        </div>
+                        <p class="text-[9px] font-bold text-slate-400 mt-4 px-4">
+                            ${fixedPct}% is locked in Bills & Subs.
+                        </p>
+                    </div>
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                         <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Wealth Composition</h4>
+                         <canvas id="polarChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- DIVIDER -->
+                <div class="flex items-center gap-4 py-4">
+                    <div class="h-px bg-slate-200 flex-1"></div>
+                    <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Detailed Pulse</span>
+                    <div class="h-px bg-slate-200 flex-1"></div>
+                </div>
+
+                <!-- 4. FINANCIAL PULSE (OLD LEGACY VIEW) -->
+                 <!-- 0. FREEDOM CALCULATOR (Legacy) -->
+                    <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden text-center group">
+                         <div class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                         <div class="relative z-10">
+                            <p class="text-[10px] font-black uppercase text-indigo-300 tracking-[0.3em] mb-4">Financial Freedom Status</p>
+                            <h3 class="text-6xl font-black text-white mb-2">${freedomYears} <span class="text-2xl text-slate-400 font-bold">Years</span></h3>
+                            <p class="text-indigo-200 font-medium text-sm">You have bought freedom until <span class="text-white font-bold bg-white/10 px-2 py-1 rounded-lg">${dateStr}</span></p>
+                            
+                            <div class="mt-8 grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                                <div>
+                                    <p class="text-[9px] uppercase text-slate-500 font-black">Net Wealth</p>
+                                    <p class="font-bold">₹${Math.round(totalNW).toLocaleString()}</p>
+                                </div>
+                                <div class="border-l border-white/10">
+                                    <p class="text-[9px] uppercase text-slate-500 font-black">Annual Burn</p>
+                                    <p class="font-bold">₹${Math.round(annualExp).toLocaleString()}</p>
+                                </div>
+                            </div>
+                         </div>
+                    </div>
+
+                    <!-- 1. HEALTH INDICATORS (Runway & Life) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Financial Runway -->
+                        <div class="bg-slate-900 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden group">
+                            <div class="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <h4 class="text-[10px] font-black uppercase text-emerald-400 mb-2 tracking-widest flex items-center gap-2">
+                                <i data-lucide="shield-check" class="w-4 h-4"></i> Financial Runway
+                            </h4>
+                            <div class="flex items-end justify-between mt-4">
+                                <div>
+                                    <p class="text-4xl font-black" id="runway-months">--</p>
+                                    <p class="text-xs text-slate-400 font-bold mt-1">Months of Survival</p>
+                                </div>
+                                <div class="w-16 h-16 rounded-full border-4 border-slate-700 flex items-center justify-center bg-slate-800">
+                                    <i data-lucide="activity" class="w-6 h-6 text-emerald-400"></i>
+                                </div>
+                            </div>
+                            <p class="text-[9px] text-slate-500 mt-4 leading-relaxed">
+                                Calculated based on your liquid cash versus average monthly expenses. Aim for>6 months.
+                            </p>
+                        </div>
+
+                        <!-- Debt Countdown -->
+                        <div class="bg-indigo-600 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden">
+                             <h4 class="text-[10px] font-black uppercase text-indigo-200 mb-2 tracking-widest flex items-center gap-2">
+                                <i data-lucide="trending-down" class="w-4 h-4"></i> Debt Freedom
+                            </h4>
+                            <div class="relative h-48 w-full mt-2">
+                                <canvas id="chart-debt-burndown"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. LIFESTYLE MONITOR (Expense Trends) -->
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
+                        <div class="flex justify-between items-center mb-6">
+                             <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                                <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Lifestyle Creep Monitor
+                            </h4>
+                            <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full">Top 3 Categories (6 Mo)</span>
+                        </div>
+                        <div class="relative h-64 w-full"><canvas id="chart-lifestyle"></canvas></div>
+                    </div>
+
+                    <!-- 3. WEALTH FORECAST -->
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Net Worth Projection (5 Years)</h4>
+                        <div class="relative h-64 w-full"><canvas id="chart-forecast"></canvas></div>
+                    </div>
+
+                    <!-- 4. COMPOSITION -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col items-center">
+                            <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Detailed Asset Mix</h4>
+                            <div class="relative h-64 w-full"><canvas id="chart-allocation"></canvas></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
+                            <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Savings Rate Trend</h4>
+                            <div class="relative h-64 w-full"><canvas id="chart-savings"></canvas></div>
+                        </div>
+                    </div>
+            </div>`;
+
+            // RENDER CHARTS
+
+
+
+            // 2. Rhythm (Bar)
+            new Chart(document.getElementById('rhythmChart'), {
+                type: 'bar',
+                data: { labels: days, datasets: [{ label: 'Spend', data: dayCounts, backgroundColor: '#cbd5e1', hoverBackgroundColor: '#f59e0b', borderRadius: 4 }] },
+                options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { display: false } } }
             });
 
-            const aed = state.data.accounts.filter(a => a.currency === 'AED').reduce((s, a) => s + a.balance, 0), inr = state.data.accounts.filter(a => a.currency === 'INR').reduce((s, a) => s + a.balance, 0);
-            new Chart(document.getElementById('currencyChart'), { type: 'pie', data: { labels: ['AED Node', 'INR Node'], datasets: [{ data: [aed * r, inr], backgroundColor: ['#0d9488', '#f59e0b'], borderWidth: 0 }] } });
+            // 3. Radar
+            new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: top5Cats.map(c => c[0]),
+                    datasets: [{
+                        label: 'Expense',
+                        data: top5Cats.map(c => c[1]),
+                        backgroundColor: 'rgba(236, 72, 153, 0.2)',
+                        borderColor: '#ec4899',
+                        pointBackgroundColor: '#ec4899'
+                    }]
+                },
+                options: { plugins: { legend: { display: false } }, scales: { r: { active: false, ticks: { display: false }, grid: { circular: true } } } }
+            });
+
+            // 4. Freedom (Doughnut)
+            new Chart(document.getElementById('freedomChart'), {
+                type: 'doughnut',
+                data: { labels: ['Free', 'Fixed'], datasets: [{ data: [freePct, fixedPct], backgroundColor: ['#10b981', '#ef4444'], borderWidth: 0, cutout: '70%' }] },
+                options: { plugins: { legend: { display: false } } }
+            });
+
+            // 5. Polar Area
+            new Chart(document.getElementById('polarChart'), {
+                type: 'polarArea',
+                data: {
+                    labels: Object.keys(assetMap),
+                    datasets: [{
+                        data: Object.values(assetMap),
+                        backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#8b5cf6', '#ec4899']
+                    }]
+                },
+                options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 9, weight: 'bold' }, usePointStyle: true } } }, scales: { r: { ticks: { display: false }, grid: { display: false } } } }
+            });
+
+            lucide.createIcons();
+            setTimeout(window.renderCharts, 500); // Trigger Old Charts logic
         };
 
         window.runRealityCheck = function () {
@@ -3043,7 +3304,10 @@
                 </div>
 
                 <!--1. PERSONALIZATION(New)-->
-                <div class="bg-white p-8 rounded-[3rem] border shadow-sm text-center">
+                <div class="bg-white p-8 rounded-[3rem] border shadow-sm text-center relative">
+                    <button onclick="window.openModal('subscriptions')" class="absolute top-8 right-8 bg-indigo-50 text-indigo-600 p-3 rounded-xl font-bold text-[10px] uppercase hover:bg-indigo-100 transition-colors flex items-center gap-2">
+                        <i data-lucide="calendar-clock" class="w-4 h-4"></i> Manage Subs
+                    </button>
                     <p class="text-[9px] font-bold text-slate-400 uppercase mb-4 tracking-widest">Theme & Accent</p>
                     <div class="grid grid-cols-4 gap-4 max-w-sm mx-auto">
                         <button onclick="window.previewTheme('emerald')" class="h-14 rounded-2xl bg-emerald-500 shadow-lg ring-offset-2 hover:ring-2 ring-emerald-400 transition-all ${s.theme === 'emerald' ? 'ring-4 ring-offset-4 ring-slate-900 scale-105' : ''}" title="Wealth (Default)"></button>
@@ -3668,6 +3932,36 @@
                             }
                         } catch (e) {
                             console.error("Peer Reminder Fetch Error", e);
+                        }
+                    }
+                }
+
+                // --- C. SUBSCRIPTION TRIALS (Ending Soon) ---
+                if (state.data.subscriptions) {
+                    const trials = state.data.subscriptions.filter(s => s.freeTrialEndDate);
+                    if (state.data.settings.myPhone && trials.length > 0) {
+                        const endingSoon = trials.filter(s => {
+                            const end = new Date(s.freeTrialEndDate);
+                            const now = new Date();
+                            const diff = (end - now) / (1000 * 60 * 60 * 24);
+                            return diff >= 0 && diff <= 3;
+                        });
+
+                        if (endingSoon.length > 0) {
+                            const summary = endingSoon.map(s => `• ${s.name} (Ends: ${s.freeTrialEndDate})`).join('\\n');
+                            const msgBody = `⚠️ *Free Trial Alert*\\n\\nThe following trials are ending soon:\\n${summary}\\n\\nCancel now if unwanted!`;
+                            const cleanPhone = state.data.settings.myPhone.replace(/[^0-9]/g, '');
+
+                            try {
+                                await fetch('https://gate.whapi.cloud/messages/text', {
+                                    method: 'POST',
+                                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ to: cleanPhone, body: msgBody })
+                                });
+                                sentCountSelf++;
+                            } catch (e) {
+                                console.error("Trial Reminder Fetch Error", e);
+                            }
                         }
                     }
                 }
@@ -5982,130 +6276,7 @@
         };
 
         // --- ANALYTICS & CHARTS ---
-        window.renderAnalytics = function () {
-            const c = document.getElementById('modal-content');
 
-            // --- FREEDOM CALCULATOR ---
-            const r = state.data.settings.rate;
-
-            // 1. Net Worth (Liquid + Invested - Debts)
-            let totalNW = 0;
-            state.data.accounts.forEach(a => totalNW += (a.currency === 'AED' ? a.balance * r : a.balance));
-            state.data.debts.forEach(d => {
-                if (!d.settled) {
-                    const val = Number(d.amount) * (d.currency === 'AED' ? r : 1);
-                    totalNW += (d.type === 'receivable' ? val : -val);
-                }
-            });
-
-            // 2. Annual Expenses (Extrapolated from last 6 months)
-            const d = new Date(); d.setMonth(d.getMonth() - 6);
-            const recentExp = state.data.transactions.filter(t => t.type === 'expense' && new Date(t.date) >= d).reduce((s, t) => {
-                const acc = state.data.accounts.find(a => a.id === t.accountId);
-                const cur = t.currency || acc?.currency || 'AED';
-                return s + (Number(t.amount) * (cur === 'AED' ? r : 1));
-            }, 0);
-
-            const avgMonthlyExp = recentExp / 6;
-            const annualExp = avgMonthlyExp * 12;
-
-            // Output Metrics
-            const freedomYears = annualExp > 0 ? (totalNW / annualExp).toFixed(1) : '∞';
-            const freedomDate = annualExp > 0 ? new Date(new Date().setFullYear(new Date().getFullYear() + parseFloat(freedomYears))) : 'Forever';
-            const dateStr = freedomDate === 'Forever' ? 'Infinity' : freedomDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-            // Render
-            c.innerHTML = `
-                <div class="space-y-8 text-left pb-10">
-                    <h2 class="text-3xl font-black text-slate-800 text-center mb-6">Financial Pulse</h2>
-
-                    <!-- 0. FREEDOM CALCULATOR (New Feature) -->
-                    <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden text-center group">
-                         <div class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                         <div class="relative z-10">
-                            <p class="text-[10px] font-black uppercase text-indigo-300 tracking-[0.3em] mb-4">Financial Freedom Status</p>
-                            <h3 class="text-6xl font-black text-white mb-2">${freedomYears} <span class="text-2xl text-slate-400 font-bold">Years</span></h3>
-                            <p class="text-indigo-200 font-medium text-sm">You have bought freedom until <span class="text-white font-bold bg-white/10 px-2 py-1 rounded-lg">${dateStr}</span></p>
-                            
-                            <div class="mt-8 grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-                                <div>
-                                    <p class="text-[9px] uppercase text-slate-500 font-black">Net Wealth</p>
-                                    <p class="font-bold">₹${Math.round(totalNW).toLocaleString()}</p>
-                                </div>
-                                <div class="border-l border-white/10">
-                                    <p class="text-[9px] uppercase text-slate-500 font-black">Annual Burn</p>
-                                    <p class="font-bold">₹${Math.round(annualExp).toLocaleString()}</p>
-                                </div>
-                            </div>
-                         </div>
-                    </div>
-
-                    <!-- 1. HEALTH INDICATORS (Runway & Life) -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Financial Runway -->
-                        <div class="bg-slate-900 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden group">
-                            <div class="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <h4 class="text-[10px] font-black uppercase text-emerald-400 mb-2 tracking-widest flex items-center gap-2">
-                                <i data-lucide="shield-check" class="w-4 h-4"></i> Financial Runway
-                            </h4>
-                            <div class="flex items-end justify-between mt-4">
-                                <div>
-                                    <p class="text-4xl font-black" id="runway-months">--</p>
-                                    <p class="text-xs text-slate-400 font-bold mt-1">Months of Survival</p>
-                                </div>
-                                <div class="w-16 h-16 rounded-full border-4 border-slate-700 flex items-center justify-center bg-slate-800">
-                                    <i data-lucide="activity" class="w-6 h-6 text-emerald-400"></i>
-                                </div>
-                            </div>
-                            <p class="text-[9px] text-slate-500 mt-4 leading-relaxed">
-                                Calculated based on your liquid cash versus average monthly expenses. Aim for>6 months.
-                            </p>
-                        </div>
-
-                        <!-- Debt Countdown -->
-                        <div class="bg-indigo-600 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden">
-                             <h4 class="text-[10px] font-black uppercase text-indigo-200 mb-2 tracking-widest flex items-center gap-2">
-                                <i data-lucide="trending-down" class="w-4 h-4"></i> Debt Freedom
-                            </h4>
-                            <div class="relative h-48 w-full mt-2">
-                                <canvas id="chart-debt-burndown"></canvas>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 2. LIFESTYLE MONITOR (Expense Trends) -->
-                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                        <div class="flex justify-between items-center mb-6">
-                             <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                                <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Lifestyle Creep Monitor
-                            </h4>
-                            <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full">Top 3 Categories (6 Mo)</span>
-                        </div>
-                        <div class="relative h-64 w-full"><canvas id="chart-lifestyle"></canvas></div>
-                    </div>
-
-                    <!-- 3. WEALTH FORECAST -->
-                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                        <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Net Worth Projection (5 Years)</h4>
-                        <div class="relative h-64 w-full"><canvas id="chart-forecast"></canvas></div>
-                    </div>
-
-                    <!-- 4. COMPOSITION -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col items-center">
-                            <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Detailed Asset Mix</h4>
-                            <div class="relative h-64 w-full"><canvas id="chart-allocation"></canvas></div>
-                        </div>
-                        <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                            <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Savings Rate Trend</h4>
-                            <div class="relative h-64 w-full"><canvas id="chart-savings"></canvas></div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-            setTimeout(window.renderCharts, 300);
-        };
 
         window.renderCharts = function () {
             const r = state.data.settings.rate;
