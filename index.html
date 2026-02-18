@@ -4158,6 +4158,13 @@
                     return;
                 }
 
+                // Balance Check
+                const payAmt = (acc.currency === 'AED' ? amt : amt / state.data.settings.rate);
+                if (acc.balance < payAmt) {
+                    window.showToast("Insufficient Funds in " + acc.name, "error");
+                    return;
+                }
+
                 // 3. Process Payment
                 inst.paid = true;
                 d.currentAmount -= amt;
@@ -5265,6 +5272,31 @@
             const { type, who, cur, amt, date, note, accId } = window.dataToCommit;
             const r = state.data.settings.rate;
 
+            // Balance Check for Lending
+            if (accId && type === 'receivable') {
+                const acc = state.data.accounts.find(a => a.id === accId);
+                if (acc) {
+                    const checkAmt = (cur === 'AED' ? amt : (cur === acc.currency ? amt : (acc.currency === 'AED' ? amt * r : amt)));
+                    // Simplified: Convert entered 'amt' (in 'cur') to Account Currency
+                    // If cur == acc.currency, amount is amt.
+                    // If cur != acc.currency... e.g. I lend 1000 INR from AED account.
+                    // amt=1000, cur=INR. acc=AED.
+                    // cost = 1000 / rate.
+
+                    let cost = amt;
+                    if (cur !== acc.currency) {
+                        if (cur === 'INR' && acc.currency === 'AED') cost = amt / r;
+                        else if (cur === 'AED' && acc.currency === 'INR') cost = amt * r;
+                    }
+
+                    if (acc.balance < cost) {
+                        window.showToast(`Insufficient Funds in ${acc.name} (Need ${cost.toFixed(2)} ${acc.currency})`, "error");
+                        window.setBtnLoading('btn-commit-debt', false);
+                        return;
+                    }
+                }
+            }
+
             if (type === 'bnpl') {
                 const split = parseInt(document.getElementById('db-split').value) || 3;
                 const schedule = [];
@@ -5558,6 +5590,22 @@
         window.saveTransaction = async function (txData) {
             let transaction = txData;
 
+            // GLOBAL BALANCE SAFEGUARD (Programmatic calls)
+            if (transaction) {
+                if (transaction.type === 'expense' || transaction.type === 'transfer_out') {
+                    const acc = state.data.accounts.find(a => a.id === transaction.accountId);
+                    if (acc) {
+                        // Parse amount safely (could be formatted string or number)
+                        const reqAmt = parseFloat(transaction.amount);
+                        if (acc.balance < reqAmt) {
+                            window.showToast(`Insufficient Funds! (${acc.currency} ${acc.balance} < ${reqAmt})`, "error");
+                            // Throwing error to stop execution chains in callers
+                            throw new Error("Insufficient Funds");
+                        }
+                    }
+                }
+            }
+
             // 1. UI Mode: Scrape from DOM if no data provided
             if (!transaction) {
                 const aId = document.getElementById('ta')?.value;
@@ -5793,6 +5841,21 @@
 
             if (aIdx === -1 || isNaN(enteredAmt) || enteredAmt <= 0 || enteredAmt > d.amount) return;
 
+            const acc = state.data.accounts[aIdx];
+            const rate = state.data.settings.rate;
+            let finalTxAmt = enteredAmt;
+
+            if (d.currency !== acc.currency) {
+                if (d.currency === 'AED' && acc.currency === 'INR') finalTxAmt = enteredAmt * rate;
+                else if (d.currency === 'INR' && acc.currency === 'AED') finalTxAmt = enteredAmt / rate;
+            }
+
+            // Balance Check
+            if (acc.balance < finalTxAmt) {
+                window.showToast(`Insufficient Funds in ${acc.name}`, "error");
+                return;
+            }
+
             window.setBtnLoading('btn-finalize-settle', true);
 
             // --- WHAPI AUTOMATION START ---
@@ -5821,9 +5884,6 @@
             }
             // --- WHAPI AUTOMATION END ---
 
-            const acc = state.data.accounts[aIdx];
-            const rate = state.data.settings.rate;
-            let finalTxAmt = enteredAmt;
 
             if (d.currency !== acc.currency) {
                 if (d.currency === 'AED' && acc.currency === 'INR') finalTxAmt = enteredAmt * rate;
