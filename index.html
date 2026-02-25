@@ -31,6 +31,21 @@
             if (currency === 'INR') return parseFloat(amt) / r;
             return parseFloat(amt);
         };
+
+        // Helper: Dynamic Chart Currency
+        window.chartCurrency = window.chartCurrency || 'INR'; // Native default is INR
+        window.setChartCurrency = function (cur) {
+            window.chartCurrency = cur;
+            window.renderDashboard(true);
+        };
+        window.toChartCur = function (val, nativeCur, rate) {
+            if (!rate) rate = (state && state.data && state.data.settings && state.data.settings.rate) ? state.data.settings.rate : 22.75;
+            if (window.chartCurrency === 'INR') {
+                return nativeCur === 'AED' ? val * rate : val;
+            } else {
+                return nativeCur === 'INR' ? val / rate : val;
+            }
+        };
     </script>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
@@ -683,6 +698,7 @@
                 goals: [], // { id, name, target, saved, currency, icon }
                 portfolio: {}, // { schemeCode: { nav, date, name } }
                 commodityRates: { Gold: 7200, Silver: 90, Platinum: 2500, Palladium: 3000 }, // INR per gram default
+                commodityRatesAED: { Gold: 315, Silver: 3.5, Platinum: 110, Palladium: 130 }, // AED per gram default
                 allocationTargets: { 'Real Estate': 0, 'Gold': 20, 'Equity': 50, 'Cash': 30 },
                 settings: { rate: 22.75, isPrivate: false, theme: 'emerald' },
                 incomeCategories: ['Salary', 'Bonus', 'Investment Return', 'Other'],
@@ -1063,18 +1079,78 @@
         }
         window.fetchExchangeRate = fetchExchangeRate;
 
+        async function fetchMetalsRate() {
+            const today = new Date().toISOString().split('T')[0];
+            // 1. Check if we already fetched today to save quota
+            if (state.data.settings.lastMetalsFetch === today) return;
+
+            try {
+                // 2. Fetch using user's metalpriceapi.com key. Requesting base AED to minimize payload and calculation complexity.
+                const url = "https://api.metalpriceapi.com/v1/latest?api_key=9f5ccca8bfeae6c25f84b8e128e521a9&base=AED&currencies=XAU,XAG";
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data && data.success) {
+                    const troyOunceToGram = 31.1034768;
+                    const rates = data.rates;
+
+                    // 3. Math Conversion (API returns '1 AED = X Ounces of Metal')
+                    // Calculate price per Ounce in AED (1 / rate)
+                    const goldAedPerOunce = 1 / rates.XAU;
+                    const silverAedPerOunce = 1 / rates.XAG;
+
+                    // Calculate price per Gram in AED
+                    const goldAED = goldAedPerOunce / troyOunceToGram;
+                    const silverAED = silverAedPerOunce / troyOunceToGram;
+
+                    // Calculate INR price locally using the User's Exchange Rate (AED * Rate = INR)
+                    const localExchangeRate = state.data.settings.rate || 22.75;
+                    const goldINR = goldAED * localExchangeRate;
+                    const silverINR = silverAED * localExchangeRate;
+
+                    // 4. Update State
+                    if (!state.data.commodityRatesAED) state.data.commodityRatesAED = {};
+                    if (!state.data.commodityRates) state.data.commodityRates = {};
+
+                    state.data.commodityRatesAED.Gold = parseFloat(goldAED.toFixed(2));
+                    state.data.commodityRatesAED.Silver = parseFloat(silverAED.toFixed(2));
+
+                    state.data.commodityRates.Gold = parseFloat(goldINR.toFixed(2));
+                    state.data.commodityRates.Silver = parseFloat(silverINR.toFixed(2));
+
+                    // 5. Mark today as fetched & Save
+                    state.data.settings.lastMetalsFetch = today;
+                    await window.updateDb();
+
+                    console.log("✅ MetalPriceAPI Live Sync Complete.");
+
+                    // 6. Refresh UI
+                    window.recalcDynamicAssets();
+                    window.renderApp();
+                }
+            } catch (e) {
+                console.warn("MetalPriceAPI fetch failed. Using cached rates.", e);
+            }
+        }
+        window.fetchMetalsRate = fetchMetalsRate;
+
         // Recalculate balances for Commodities (Weight * Rate) and Funds (Units * NAV)
         window.recalcDynamicAssets = function () {
             state.data.accounts.forEach(a => {
                 if (a.type === 'Commodity' && a.weight) {
                     const metal = Object.keys(state.data.commodityRates).find(k => a.name.includes(k)) || a.subtype || 'Gold';
-                    const rateInINR = state.data.commodityRates[metal] || 0;
-                    const valInINR = a.weight * rateInINR;
 
                     // Respect the account's currency setting
                     if (a.currency === 'AED') {
-                        a.balance = window.toCurrency(valInINR / state.data.settings.rate);
+                        let rateInAED = (state.data.commodityRatesAED && state.data.commodityRatesAED[metal]) || 0;
+                        if (!rateInAED && state.data.commodityRates[metal]) {
+                            rateInAED = state.data.commodityRates[metal] / state.data.settings.rate;
+                        }
+                        const valInAED = a.weight * rateInAED;
+                        a.balance = window.toCurrency(valInAED);
                     } else {
+                        const rateInINR = state.data.commodityRates[metal] || 0;
+                        const valInINR = a.weight * rateInINR;
                         a.balance = window.toCurrency(valInINR);
                         a.currency = 'INR';
                     }
@@ -2132,13 +2208,13 @@
                         <div class="grid grid-cols-2 gap-4 mb-6 text-center">
                             <div>
                                 <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 text-left ml-2 text-center">From (Source)</label>
-                                <select id="ts" onchange="window.toggleSellFields()" class="w-full p-4 border rounded-xl font-bold text-center text-center">
+                                <select id="ts" onchange="window.toggleTradeFields()" class="w-full p-4 border rounded-xl font-bold text-center text-center">
                                     ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
                                 </select>
                             </div>
                             <div>
                                 <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 text-left ml-2 text-center">To (Dest)</label>
-                                <select id="ttg" class="w-full p-4 border rounded-xl font-bold text-center text-center">
+                                <select id="ttg" onchange="window.toggleTradeFields()" class="w-full p-4 border rounded-xl font-bold text-center text-center">
                                     ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
                                 </select>
                             </div>
@@ -2157,6 +2233,16 @@
                                      <input type="number" id="sell-rate" oninput="window.calcSellTotal()" class="w-full p-3 border rounded-xl font-bold text-center text-slate-900 outline-none focus:border-emerald-500" placeholder="0.00">
                                  </div>
                              </div>
+                        </div>
+                        
+                        <!-- ASSET BUY UI -->
+                        <div id="asset-buy-area" class="hidden bg-emerald-50 p-4 rounded-2xl mb-4 border border-emerald-100">
+                             <p class="text-[9px] font-black text-emerald-600 uppercase mb-2">Purchase Rate Override</p>
+                             <div class="flex items-center space-x-2">
+                                 <label id="lbl-buy-rate" class="text-[9px] font-bold text-emerald-700 w-1/3 text-left">Current Rate</label>
+                                 <input type="number" id="buy-rate" class="w-2/3 p-3 border rounded-xl font-bold text-center text-emerald-900 outline-none bg-white focus:ring-2 focus:ring-emerald-500" placeholder="Auto (Live Rate)">
+                             </div>
+                             <p class="text-[8px] text-emerald-600/70 mt-2 font-bold leading-tight">Leave blank to use the live global rate, or enter the exact purchase rate on your receipt.</p>
                         </div>
 
                         <input type="number" id="tamt" oninput="window.calcRemit(this.value)" class="w-full p-6 border-2 rounded-2xl font-black text-3xl text-center mb-4 text-center outline-none focus:border-emerald-500" placeholder="Sending Amount">
@@ -2920,7 +3006,7 @@
             document.getElementById('sip-result').innerText = '₹' + Math.round(FV).toLocaleString();
         };
 
-        window.renderDashboard = function () {
+        window.renderDashboard = function (instant = false) {
             const c = document.getElementById('modal-content');
 
             // --- DATA PREP ---
@@ -2930,18 +3016,18 @@
 
             // 1. CALC FINANCIAL HEALTH SCORE VARIABLES
             // A. Savings Rate (Last 30 Days)
-            const last30Inc = txs.filter(t => t.type === 'income' && new Date(t.date) >= d).reduce((s, t) => s + Number(window.convert(t.amount, t.currency || 'AED')), 0);
-            const last30Exp = txs.filter(t => t.type === 'expense' && new Date(t.date) >= d).reduce((s, t) => s + Number(window.convert(t.amount, t.currency || 'AED')), 0);
+            const last30Inc = txs.filter(t => t.type === 'income' && new Date(t.date) >= d).reduce((s, t) => s + window.toChartCur(Number(t.amount), t.currency || 'AED', r), 0);
+            const last30Exp = txs.filter(t => t.type === 'expense' && new Date(t.date) >= d).reduce((s, t) => s + window.toChartCur(Number(t.amount), t.currency || 'AED', r), 0);
             const savingsRate = last30Inc > 0 ? Math.max(0, ((last30Inc - last30Exp) / last30Inc) * 100) : 0;
 
             // B. Runway (Months)
-            const liquid = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).reduce((s, a) => s + (a.currency === 'AED' ? a.balance * r : a.balance), 0);
+            const liquid = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).reduce((s, a) => s + window.toChartCur(a.balance, a.currency || 'AED', r), 0);
             const avgExp = last30Exp > 0 ? last30Exp : 1; // Avoid div by 0
             const runway = liquid / avgExp;
 
             // C. Debt Load (Debt / Assets)
-            const totalAssets = state.data.accounts.reduce((s, a) => s + (a.currency === 'AED' ? a.balance * r : a.balance), 0);
-            const totalDebt = state.data.debts.filter(d => !d.settled).reduce((s, d) => s + (d.currency === 'AED' ? d.amount * r : d.amount), 0);
+            const totalAssets = state.data.accounts.reduce((s, a) => s + window.toChartCur(a.balance, a.currency || 'AED', r), 0);
+            const totalDebt = state.data.debts.filter(d => !d.settled).reduce((s, d) => s + window.toChartCur(d.amount, d.currency || 'AED', r), 0);
             const debtRatio = totalAssets > 0 ? (totalDebt / totalAssets) * 100 : 0;
 
             // Score Formula: (Savings * 0.4) + (RunwayCapped * 0.4) + (DebtInverted * 0.2)
@@ -2958,13 +3044,13 @@
             const dayCounts = [0, 0, 0, 0, 0, 0, 0];
             txs.filter(t => t.type === 'expense').forEach(t => {
                 const day = new Date(t.date).getDay();
-                dayCounts[day] += Number(window.convert(t.amount, t.currency || 'AED'));
+                dayCounts[day] += window.toChartCur(Number(t.amount), t.currency || 'AED', r);
             });
 
             // 3. EXPENSE RADAR (Categories)
             const catMap = {};
             txs.filter(t => t.type === 'expense').forEach(t => {
-                catMap[t.category] = (catMap[t.category] || 0) + Number(window.convert(t.amount, t.currency || 'AED'));
+                catMap[t.category] = (catMap[t.category] || 0) + window.toChartCur(Number(t.amount), t.currency || 'AED', r);
             });
             const top5Cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
@@ -2979,17 +3065,17 @@
             const assetMap = {};
             state.data.accounts.forEach(a => {
                 const k = a.subtype || a.type; // Use subtype if valid (e.g. Gold), else type
-                const val = a.currency === 'AED' ? a.balance * r : a.balance;
+                const val = window.toChartCur(a.balance, a.currency || 'AED', r);
                 if (val > 0) assetMap[k] = (assetMap[k] || 0) + val;
             });
 
             // --- OLD ANALYTICS LOGIC MERGE ---
             // 1. Net Worth (Liquid + Invested - Debts)
             let totalNW = 0;
-            state.data.accounts.forEach(a => totalNW += (a.currency === 'AED' ? a.balance * r : a.balance));
+            state.data.accounts.forEach(a => totalNW += window.toChartCur(a.balance, a.currency || 'AED', r));
             state.data.debts.forEach(d => {
                 if (!d.settled) {
-                    const val = Number(d.amount) * (d.currency === 'AED' ? r : 1);
+                    const val = window.toChartCur(Number(d.amount), d.currency || 'AED', r);
                     totalNW += (d.type === 'receivable' ? val : -val);
                 }
             });
@@ -2999,7 +3085,7 @@
             const recentExp = state.data.transactions.filter(t => t.type === 'expense' && new Date(t.date) >= d6m).reduce((s, t) => {
                 const acc = state.data.accounts.find(a => a.id === t.accountId);
                 const cur = t.currency || acc?.currency || 'AED';
-                return s + (Number(t.amount) * (cur === 'AED' ? r : 1));
+                return s + window.toChartCur(Number(t.amount), cur, r);
             }, 0);
 
             const avgMonthlyExpOLD = recentExp / 6;
@@ -3011,8 +3097,18 @@
             const dateStr = freedomDate === 'Forever' ? 'Infinity' : freedomDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
             // HTML MERGE
+            const currSym = window.chartCurrency === 'AED' ? 'AED' : '₹';
             c.innerHTML = `
             <div class="space-y-8 py-4">
+                
+                <!-- CURRENCY TOGGLE -->
+                <div class="flex justify-center mb-6">
+                    <div class="bg-slate-200 p-1 rounded-xl flex items-center gap-1">
+                        <button onclick="window.setChartCurrency('AED')" class="px-6 py-2 text-[10px] uppercase font-black tracking-widest rounded-lg transition-all ${window.chartCurrency === 'AED' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">AED</button>
+                        <button onclick="window.setChartCurrency('INR')" class="px-6 py-2 text-[10px] uppercase font-black tracking-widest rounded-lg transition-all ${window.chartCurrency === 'INR' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}">INR</button>
+                    </div>
+                </div>
+
                 <!-- 1. HEALTH SCORE (NEW) -->
                 <div class="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden text-center">
                     <p class="text-[9px] font-black uppercase text-slate-500 tracking-widest mb-6">Financial Health Score</p>
@@ -3031,37 +3127,49 @@
                     <p class="text-[10px] font-bold text-slate-500 mt-6">Based on Savings, Runway & Debt</p>
                 </div>
 
-                <!-- 2. RHYTHM & RADAR (NEW) -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
-                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Spending Rhythm</h4>
-                        <canvas id="rhythmChart" height="200"></canvas>
+                <!-- 2. INCOME VS EXPENSE (NEW) -->
+                <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                    <div class="flex justify-between items-center mb-6">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Cashflow Trend (6 Months)
+                        </h4>
+                        <div class="flex gap-4">
+                            <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-emerald-500"></div><span class="text-[9px] font-bold text-slate-500 uppercase">Income</span></div>
+                            <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-rose-500"></div><span class="text-[9px] font-bold text-slate-500 uppercase">Expense</span></div>
+                        </div>
                     </div>
-                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
-                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Lifestyle Radar</h4>
-                        <canvas id="radarChart" height="200"></canvas>
+                    <div class="relative h-64 w-full">
+                        <canvas id="cashflowChart"></canvas>
                     </div>
                 </div>
 
-                <!-- 3. FREEDOM & POLAR (NEW) -->
+                <!-- 3. LIFESTYLE & COMPOSITION RADARS -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
-                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Freedom Ratio</h4>
-                        <div class="relative w-40 h-40 mx-auto">
-                            <canvas id="freedomChart"></canvas>
-                            <div class="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
-                                <span class="text-2xl font-black text-emerald-500">${freePct}%</span>
-                                <span class="text-[8px] font-bold text-slate-400 uppercase">Yours</span>
-                            </div>
-                        </div>
-                        <p class="text-[9px] font-bold text-slate-400 mt-4 px-4">
-                            ${fixedPct}% is locked in Bills & Subs.
-                        </p>
+                        <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Lifestyle Radar</h4>
+                        <canvas id="radarChart" height="200"></canvas>
                     </div>
                     <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
                          <h4 class="text-[9px] font-black uppercase text-slate-400 mb-4">Wealth Composition</h4>
                          <canvas id="polarChart"></canvas>
                     </div>
+                </div>
+
+                <!-- 4. LIFESTYLE CREEP / EXPENSE TRENDS -->
+                <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
+                    <div class="flex justify-between items-center mb-6">
+                         <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Lifestyle Creep Monitor
+                        </h4>
+                        <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full">Top 3 Categories (6 Mo)</span>
+                    </div>
+                    <div class="relative h-64 w-full"><canvas id="chart-lifestyle"></canvas></div>
+                </div>
+
+                <!-- 5. DETAILED ASSET MIX -->
+                <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col items-center">
+                    <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Detailed Asset Mix</h4>
+                    <div class="relative h-64 w-full"><canvas id="chart-allocation"></canvas></div>
                 </div>
 
                 <!-- DIVIDER -->
@@ -3071,140 +3179,173 @@
                     <div class="h-px bg-slate-200 flex-1"></div>
                 </div>
 
-                <!-- 4. FINANCIAL PULSE (OLD LEGACY VIEW) -->
-                 <!-- 0. FREEDOM CALCULATOR (Legacy) -->
-                    <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden text-center group">
-                         <div class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                         <div class="relative z-10">
-                            <p class="text-[10px] font-black uppercase text-indigo-300 tracking-[0.3em] mb-4">Financial Freedom Status</p>
-                            <h3 class="text-6xl font-black text-white mb-2">${freedomYears} <span class="text-2xl text-slate-400 font-bold">Years</span></h3>
-                            <p class="text-indigo-200 font-medium text-sm">You have bought freedom until <span class="text-white font-bold bg-white/10 px-2 py-1 rounded-lg">${dateStr}</span></p>
-                            
-                            <div class="mt-8 grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-                                <div>
-                                    <p class="text-[9px] uppercase text-slate-500 font-black">Net Wealth</p>
-                                    <p class="font-bold">₹${Math.round(totalNW).toLocaleString()}</p>
-                                </div>
-                                <div class="border-l border-white/10">
-                                    <p class="text-[9px] uppercase text-slate-500 font-black">Annual Burn</p>
-                                    <p class="font-bold">₹${Math.round(annualExp).toLocaleString()}</p>
-                                </div>
+                <!-- 3. FINANCIAL PULSE (LEGACY READOUTS) -->
+                <!-- 0. FREEDOM CALCULATOR -->
+                <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden text-center group">
+                    <div class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative z-10">
+                        <p class="text-[10px] font-black uppercase text-indigo-300 tracking-[0.3em] mb-4">Financial Freedom Status</p>
+                        <h3 class="text-6xl font-black text-white mb-2">${freedomYears} <span class="text-2xl text-slate-400 font-bold">Years</span></h3>
+                        <p class="text-indigo-200 font-medium text-sm">You have bought freedom until <span class="text-white font-bold bg-white/10 px-2 py-1 rounded-lg">${dateStr}</span></p>
+                        
+                        <div class="mt-8 grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                            <div>
+                                <p class="text-[9px] uppercase text-slate-500 font-black">Net Wealth</p>
+                                <p class="font-bold">${currSym} ${Math.round(totalNW).toLocaleString()}</p>
                             </div>
-                         </div>
-                    </div>
-
-                    <!-- 1. HEALTH INDICATORS (Runway & Life) -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Financial Runway -->
-                        <div class="bg-slate-900 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden group">
-                            <div class="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <h4 class="text-[10px] font-black uppercase text-emerald-400 mb-2 tracking-widest flex items-center gap-2">
-                                <i data-lucide="shield-check" class="w-4 h-4"></i> Financial Runway
-                            </h4>
-                            <div class="flex items-end justify-between mt-4">
-                                <div>
-                                    <p class="text-4xl font-black" id="runway-months">--</p>
-                                    <p class="text-xs text-slate-400 font-bold mt-1">Months of Survival</p>
-                                </div>
-                                <div class="w-16 h-16 rounded-full border-4 border-slate-700 flex items-center justify-center bg-slate-800">
-                                    <i data-lucide="activity" class="w-6 h-6 text-emerald-400"></i>
-                                </div>
-                            </div>
-                            <p class="text-[9px] text-slate-500 mt-4 leading-relaxed">
-                                Calculated based on your liquid cash versus average monthly expenses. Aim for>6 months.
-                            </p>
-                        </div>
-
-                        <!-- Debt Countdown -->
-                        <div class="bg-indigo-600 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden">
-                             <h4 class="text-[10px] font-black uppercase text-indigo-200 mb-2 tracking-widest flex items-center gap-2">
-                                <i data-lucide="trending-down" class="w-4 h-4"></i> Debt Freedom
-                            </h4>
-                            <div class="relative h-48 w-full mt-2">
-                                <canvas id="chart-debt-burndown"></canvas>
+                            <div class="border-l border-white/10">
+                                <p class="text-[9px] uppercase text-slate-500 font-black">Annual Burn</p>
+                                <p class="font-bold">${currSym} ${Math.round(annualExp).toLocaleString()}</p>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- 2. LIFESTYLE MONITOR (Expense Trends) -->
-                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                        <div class="flex justify-between items-center mb-6">
-                             <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                                <i data-lucide="bar-chart-2" class="w-4 h-4"></i> Lifestyle Creep Monitor
-                            </h4>
-                            <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-3 py-1 rounded-full">Top 3 Categories (6 Mo)</span>
+                <!-- 1. HEALTH INDICATORS (Runway & Life) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Financial Runway -->
+                    <div class="bg-slate-900 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <h4 class="text-[10px] font-black uppercase text-emerald-400 mb-2 tracking-widest flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-4 h-4"></i> Financial Runway
+                        </h4>
+                        <div class="flex items-end justify-between mt-4">
+                            <div>
+                                <p class="text-4xl font-black" id="runway-months">${typeof runway === 'number' ? runway.toFixed(1) : runway}</p>
+                                <p class="text-xs text-slate-400 font-bold mt-1">Months of Survival</p>
+                            </div>
+                            <div class="w-16 h-16 rounded-full border-4 border-slate-700 flex items-center justify-center bg-slate-800">
+                                <i data-lucide="activity" class="w-6 h-6 text-emerald-400"></i>
+                            </div>
                         </div>
-                        <div class="relative h-64 w-full"><canvas id="chart-lifestyle"></canvas></div>
+                        <p class="text-[9px] text-slate-500 mt-4 leading-relaxed">
+                            Calculated based on your liquid cash versus average monthly expenses. Aim for>6 months.
+                        </p>
                     </div>
 
-                    <!-- 3. WEALTH FORECAST -->
-                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                        <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Net Worth Projection (5 Years)</h4>
-                        <div class="relative h-64 w-full"><canvas id="chart-forecast"></canvas></div>
-                    </div>
-
-                    <!-- 4. COMPOSITION -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col items-center">
-                            <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Detailed Asset Mix</h4>
-                            <div class="relative h-64 w-full"><canvas id="chart-allocation"></canvas></div>
-                        </div>
-                        <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm">
-                            <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4">Savings Rate Trend</h4>
-                            <div class="relative h-64 w-full"><canvas id="chart-savings"></canvas></div>
+                    <!-- Debt Summary (Chart Removed) -->
+                    <div class="bg-indigo-600 text-white p-6 rounded-[2.5rem] border shadow-xl relative overflow-hidden">
+                            <h4 class="text-[10px] font-black uppercase text-indigo-200 mb-2 tracking-widest flex items-center gap-2">
+                            <i data-lucide="trending-down" class="w-4 h-4"></i> Total Debt
+                        </h4>
+                        <div class="flex items-end justify-between mt-4">
+                            <div>
+                                <p class="text-4xl font-black">${currSym} ${Math.round(totalDebt).toLocaleString()}</p>
+                                <p class="text-xs text-indigo-300 font-bold mt-1">Outstanding Balance</p>
+                            </div>
+                            <div class="w-16 h-16 rounded-full border-4 border-indigo-500/30 flex items-center justify-center bg-indigo-700">
+                                <i data-lucide="credit-card" class="w-6 h-6 text-indigo-200"></i>
+                            </div>
                         </div>
                     </div>
+                </div>
             </div>`;
 
-            // RENDER CHARTS
+            // CALC CASHFLOW (Last 6 Months)
+            const cfLabels = [];
+            const cfIncome = [];
+            const cfExpense = [];
 
+            const iterDate = new Date();
+            for (let i = 5; i >= 0; i--) {
+                const targetDate = new Date(iterDate.getFullYear(), iterDate.getMonth() - i, 1);
+                cfLabels.push(targetDate.toLocaleString('default', { month: 'short' }));
 
+                let mInc = 0;
+                let mExp = 0;
 
-            // 2. Rhythm (Bar)
-            new Chart(document.getElementById('rhythmChart'), {
+                state.data.transactions.forEach(t => {
+                    const td = new Date(t.date);
+                    if (td.getMonth() === targetDate.getMonth() && td.getFullYear() === targetDate.getFullYear()) {
+                        const val = window.toChartCur(Number(t.amount), t.currency || 'AED', r);
+                        if (t.type === 'income') mInc += val;
+                        if (t.type === 'expense') mExp += val;
+                    }
+                });
+
+                cfIncome.push(mInc);
+                cfExpense.push(mExp);
+            }
+            // RENDER NEW CASHFLOW CHART
+            const cfCanvas = document.getElementById('cashflowChart');
+            if (cfCanvas) {
+                const existing = Chart.getChart(cfCanvas);
+                if (existing) existing.destroy();
+            }
+
+            new Chart(cfCanvas, {
                 type: 'bar',
-                data: { labels: days, datasets: [{ label: 'Spend', data: dayCounts, backgroundColor: '#cbd5e1', hoverBackgroundColor: '#f59e0b', borderRadius: 4 }] },
-                options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { display: false } } }
-            });
-
-            // 3. Radar
-            new Chart(document.getElementById('radarChart'), {
-                type: 'radar',
                 data: {
-                    labels: top5Cats.map(c => c[0]),
-                    datasets: [{
-                        label: 'Expense',
-                        data: top5Cats.map(c => c[1]),
-                        backgroundColor: 'rgba(236, 72, 153, 0.2)',
-                        borderColor: '#ec4899',
-                        pointBackgroundColor: '#ec4899'
-                    }]
+                    labels: cfLabels,
+                    datasets: [
+                        { label: 'Income', data: cfIncome, backgroundColor: '#10b981', borderRadius: 4, barPercentage: 0.8, categoryPercentage: 0.8 },
+                        { label: 'Expense', data: cfExpense, backgroundColor: '#f43f5e', borderRadius: 4, barPercentage: 0.8, categoryPercentage: 0.8 }
+                    ]
                 },
-                options: { plugins: { legend: { display: false } }, scales: { r: { active: false, ticks: { display: false }, grid: { circular: true } } } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            border: { display: false },
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { size: 10, family: "'Outfit', sans-serif" }, callback: (value) => currSym + ' ' + (value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value) }
+                        }
+                    }
+                }
             });
 
-            // 4. Freedom (Doughnut)
-            new Chart(document.getElementById('freedomChart'), {
-                type: 'doughnut',
-                data: { labels: ['Free', 'Fixed'], datasets: [{ data: [freePct, fixedPct], backgroundColor: ['#10b981', '#ef4444'], borderWidth: 0, cutout: '70%' }] },
-                options: { plugins: { legend: { display: false } } }
-            });
+            // RENDER RADAR
+            const radarCanvas = document.getElementById('radarChart');
+            if (radarCanvas) {
+                const existing = Chart.getChart(radarCanvas);
+                if (existing) existing.destroy();
+                new Chart(radarCanvas, {
+                    type: 'radar',
+                    data: {
+                        labels: top5Cats.map(c => c[0]),
+                        datasets: [{
+                            label: 'Expense',
+                            data: top5Cats.map(c => c[1]),
+                            backgroundColor: 'rgba(236, 72, 153, 0.2)',
+                            borderColor: '#ec4899',
+                            pointBackgroundColor: '#ec4899'
+                        }]
+                    },
+                    options: { plugins: { legend: { display: false } }, scales: { r: { active: false, ticks: { display: false }, grid: { circular: true } } } }
+                });
+            }
 
-            // 5. Polar Area
-            new Chart(document.getElementById('polarChart'), {
-                type: 'polarArea',
-                data: {
-                    labels: Object.keys(assetMap),
-                    datasets: [{
-                        data: Object.values(assetMap),
-                        backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#8b5cf6', '#ec4899']
-                    }]
-                },
-                options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 9, weight: 'bold' }, usePointStyle: true } } }, scales: { r: { ticks: { display: false }, grid: { display: false } } } }
-            });
+            // RENDER POLAR
+            const polarCanvas = document.getElementById('polarChart');
+            if (polarCanvas) {
+                const existing = Chart.getChart(polarCanvas);
+                if (existing) existing.destroy();
+                new Chart(polarCanvas, {
+                    type: 'polarArea',
+                    data: {
+                        labels: Object.keys(assetMap),
+                        datasets: [{
+                            data: Object.values(assetMap),
+                            backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#8b5cf6', '#ec4899']
+                        }]
+                    },
+                    options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 9, weight: 'bold' }, usePointStyle: true } } }, scales: { r: { ticks: { display: false }, grid: { display: false } } } }
+                });
+            }
 
             lucide.createIcons();
-            setTimeout(window.renderCharts, 500); // Trigger Old Charts logic
+
+
+
+
+            if (instant) {
+                window.renderCharts();
+            } else {
+                setTimeout(window.renderCharts, 500); // Trigger Old Charts logic with animation delay
+            }
         };
 
         window.runRealityCheck = function () {
@@ -3411,15 +3552,31 @@
                 <!--4. COMMODITY RATES-->
                 <div class="bg-amber-50/50 p-8 rounded-[3rem] border border-amber-100">
                     <h4 class="text-xs font-black text-amber-700 uppercase tracking-widest mb-6 flex items-center gap-2">
-                         <i data-lucide="gem" class="w-4 h-4"></i> Live Gold/Metal Rates (INR/g)
+                         <i data-lucide="gem" class="w-4 h-4"></i> Live Gold/Metal Rates (INR/g & AED/g)
                     </h4>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        ${Object.entries(state.data.commodityRates || { Gold: 0, Silver: 0 }).map(([metal, price]) => `
-                            <div class="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm text-center">
-                                <label class="text-[9px] font-bold text-amber-900/40 uppercase block mb-2">${metal}</label>
-                                <input type="number" id="rate-${metal}" value="${price}" class="w-full text-center font-black text-amber-900 bg-transparent outline-none border-b border-transparent focus:border-amber-400 placeholder-amber-200">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-[9px] font-bold text-amber-600 uppercase mb-4 tracking-widest text-center border-b border-amber-200 pb-2">India Rates (INR)</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                ${Object.keys(state.data.commodityRates || { Gold: 0, Silver: 0, Platinum: 0, Palladium: 0 }).map(metal => `
+                                    <div class="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm text-center">
+                                        <label class="text-[9px] font-bold text-amber-900/40 uppercase block mb-2">${metal}</label>
+                                        <input type="number" id="rate-${metal}" value="${(state.data.commodityRates || {})[metal] || 0}" class="w-full text-center font-black text-amber-900 bg-transparent outline-none border-b border-transparent focus:border-amber-400 placeholder-amber-200">
+                                    </div>
+                                `).join('')}
                             </div>
-                        `).join('')}
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-bold text-amber-600 uppercase mb-4 tracking-widest text-center border-b border-amber-200 pb-2">UAE Rates (AED)</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                ${Object.keys(state.data.commodityRatesAED || { Gold: 0, Silver: 0, Platinum: 0, Palladium: 0 }).map(metal => `
+                                    <div class="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm text-center">
+                                        <label class="text-[9px] font-bold text-amber-900/40 uppercase block mb-2">${metal}</label>
+                                        <input type="number" id="rate-aed-${metal}" value="${(state.data.commodityRatesAED || {})[metal] || 0}" class="w-full text-center font-black text-amber-900 bg-transparent outline-none border-b border-transparent focus:border-amber-400 placeholder-amber-200">
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -3555,9 +3712,13 @@
 
             // Commodity Rates
             if (!state.data.commodityRates) state.data.commodityRates = {};
+            if (!state.data.commodityRatesAED) state.data.commodityRatesAED = {};
             ['Gold', 'Silver', 'Platinum', 'Palladium'].forEach(m => {
-                const el = document.getElementById('rate-' + m);
-                if (el) state.data.commodityRates[m] = parseFloat(el.value);
+                const elInr = document.getElementById('rate-' + m);
+                if (elInr) state.data.commodityRates[m] = parseFloat(elInr.value);
+
+                const elAed = document.getElementById('rate-aed-' + m);
+                if (elAed) state.data.commodityRatesAED[m] = parseFloat(elAed.value);
             });
 
             await updateDb();
@@ -5157,9 +5318,13 @@
 
             // Save Commodity Rates
             if (!state.data.commodityRates) state.data.commodityRates = {};
+            if (!state.data.commodityRatesAED) state.data.commodityRatesAED = {};
             ['Gold', 'Silver', 'Platinum', 'Palladium'].forEach(metal => {
-                const el = document.getElementById('rate-' + metal);
-                if (el) state.data.commodityRates[metal] = parseFloat(el.value) || 0;
+                const elInr = document.getElementById('rate-' + metal);
+                if (elInr) state.data.commodityRates[metal] = parseFloat(elInr.value) || 0;
+
+                const elAed = document.getElementById('rate-aed-' + metal);
+                if (elAed) state.data.commodityRatesAED[metal] = parseFloat(elAed.value) || 0;
             });
 
             await updateDb();
@@ -5380,37 +5545,70 @@
             window.setBtnLoading('btn-commit-debt', false);
         };
 
-        // --- ASSET SELL FLOW HELPERS ---
-        window.toggleSellFields = function () {
+        // --- ASSET SELL/BUY FLOW HELPERS ---
+        window.toggleTradeFields = function () {
             const sId = document.getElementById('ts').value;
-            const acc = state.data.accounts.find(a => a.id === sId);
-            const area = document.getElementById('asset-sell-area');
+            const tId = document.getElementById('ttg').value;
+            const sAcc = state.data.accounts.find(a => a.id === sId);
+            const tAcc = state.data.accounts.find(a => a.id === tId);
 
-            if (!acc || !area) return;
+            const sellArea = document.getElementById('asset-sell-area');
+            const buyArea = document.getElementById('asset-buy-area');
 
-            const isGold = acc.type === 'Commodity' || (acc.subtype && ['Gold', 'Silver', 'Platinum'].includes(acc.subtype));
-            const isMF = acc.type === 'Mutual Fund';
+            // Handle Source (Sell)
+            if (sAcc && sellArea) {
+                const isGoldSell = sAcc.type === 'Commodity' || (sAcc.subtype && ['Gold', 'Silver', 'Platinum'].includes(sAcc.subtype));
+                const isMFSell = sAcc.type === 'Mutual Fund';
 
-            if (isGold || isMF) {
-                area.classList.remove('hidden');
-                document.getElementById('lbl-sell-qty').innerText = isMF ? "Units to Redeem" : "Grams to Sell";
-                document.getElementById('lbl-sell-rate').innerText = isMF ? "NAV (Price per Unit)" : "Rate per Gram";
+                if (isGoldSell || isMFSell) {
+                    sellArea.classList.remove('hidden');
+                    document.getElementById('lbl-sell-qty').innerText = isMFSell ? "Units to Redeem" : "Grams to Sell";
+                    document.getElementById('lbl-sell-rate').innerText = isMFSell ? "NAV (Price per Unit)" : "Rate per Gram";
 
-                // Auto-Fill Rate if known?
-                if (isGold) {
-                    const rate = state.data.commodityRates[acc.subtype] || 0;
-                    if (rate > 0) document.getElementById('sell-rate').value = rate;
+                    if (isGoldSell) {
+                        let rate = 0;
+                        if (sAcc.currency === 'AED') rate = (state.data.commodityRatesAED && state.data.commodityRatesAED[sAcc.subtype]);
+                        if (!rate) rate = state.data.commodityRates[sAcc.subtype] || 0;
+                        if (rate > 0) document.getElementById('sell-rate').value = rate;
+                    }
+                    if (isMFSell && sAcc.schemeCode && state.data.portfolio[sAcc.schemeCode]) {
+                        document.getElementById('sell-rate').value = state.data.portfolio[sAcc.schemeCode].nav;
+                    }
+                } else {
+                    sellArea.classList.add('hidden');
+                    document.getElementById('sell-qty').value = '';
+                    document.getElementById('sell-rate').value = '';
                 }
-                if (isMF && acc.schemeCode && state.data.portfolio[acc.schemeCode]) {
-                    const nav = state.data.portfolio[acc.schemeCode].nav;
-                    document.getElementById('sell-rate').value = nav;
-                }
+            }
 
-            } else {
-                area.classList.add('hidden');
-                // Reset fields
-                document.getElementById('sell-qty').value = '';
-                document.getElementById('sell-rate').value = '';
+            // Handle Destination (Buy)
+            if (tAcc && buyArea) {
+                const isGoldBuy = tAcc.type === 'Commodity' || (tAcc.subtype && ['Gold', 'Silver', 'Platinum'].includes(tAcc.subtype));
+                const isMFBuy = tAcc.type === 'Mutual Fund';
+
+                if (isGoldBuy || isMFBuy) {
+                    buyArea.classList.remove('hidden');
+                    document.getElementById('lbl-buy-rate').innerText = isMFBuy ? "Purchase NAV" : `Rate per Gram (${tAcc.currency})`;
+                    document.getElementById('buy-rate').value = ''; // Reset user input
+
+                    // Auto-suggest rate based on currency
+                    if (isGoldBuy) {
+                        let defaultRate = '';
+                        if (tAcc.currency === 'AED') {
+                            defaultRate = (state.data.commodityRatesAED && state.data.commodityRatesAED[tAcc.subtype]) || '';
+                            if (!defaultRate && state.data.commodityRates[tAcc.subtype]) defaultRate = (state.data.commodityRates[tAcc.subtype] / state.data.settings.rate).toFixed(2);
+                        } else {
+                            defaultRate = state.data.commodityRates[tAcc.subtype] || '';
+                        }
+                        if (defaultRate) document.getElementById('buy-rate').value = defaultRate;
+                    }
+                    if (isMFBuy && tAcc.schemeCode && state.data.portfolio[tAcc.schemeCode]) {
+                        document.getElementById('buy-rate').value = state.data.portfolio[tAcc.schemeCode].nav;
+                    }
+                } else {
+                    buyArea.classList.add('hidden');
+                    document.getElementById('buy-rate').value = '';
+                }
             }
         };
 
@@ -5723,20 +5921,33 @@
 
             // --- INVESTMENT LOGIC (Auto-Buy/Sell Units) ---
 
+            const buyRateInput = document.getElementById('buy-rate');
+            const explicitBuyRate = (buyRateInput && !buyRateInput.closest('#asset-buy-area').classList.contains('hidden')) ? parseFloat(buyRateInput.value) : 0;
+
             // 1. DESTINATION (Buying/Depositing)
             if (tAcc.type === 'Mutual Fund' && tAcc.schemeCode) {
                 const meta = state.data.portfolio ? state.data.portfolio[tAcc.schemeCode] : null;
-                const nav = meta ? parseFloat(meta.nav) : 0;
+                const nav = explicitBuyRate > 0 ? explicitBuyRate : (meta ? parseFloat(meta.nav) : 0);
                 if (nav > 0) {
                     const unitsBought = finalAmt / nav;
                     state.data.accounts[tIdx].units = (state.data.accounts[tIdx].units || 0) + unitsBought;
                     noteSuffix += ` [Bought ${unitsBought.toFixed(3)} Units @${nav}]`;
                 }
             } else if (tAcc.type === 'Commodity' && tAcc.subtype) {
-                const metalRate = state.data.commodityRates[tAcc.subtype] || 0;
+                let metalRate = explicitBuyRate > 0 ? explicitBuyRate : 0;
+
+                if (metalRate === 0) {
+                    if (tAcc.currency === 'AED') {
+                        metalRate = (state.data.commodityRatesAED && state.data.commodityRatesAED[tAcc.subtype]) || 0;
+                        if (!metalRate && state.data.commodityRates[tAcc.subtype]) {
+                            metalRate = state.data.commodityRates[tAcc.subtype] / rate;
+                        }
+                    } else {
+                        metalRate = state.data.commodityRates[tAcc.subtype] || 0;
+                    }
+                }
+
                 if (metalRate > 0) {
-                    // Correction: finalAmt is currently in Target Currency (which might be INR for commodities)
-                    // We assume Commodity Account Currency acts as the valuation currency.
                     const weightBought = finalAmt / metalRate;
                     state.data.accounts[tIdx].weight = (state.data.accounts[tIdx].weight || 0) + weightBought;
                     // Track original cost: add the transfer amount (in account currency) to originalCost
@@ -5788,9 +5999,18 @@
                         noteSuffix += ` [Sold ${unitsSold.toFixed(3)} Units]`;
                     }
                 } else if (sAcc.type === 'Commodity' && sAcc.subtype) {
-                    const metalRate = state.data.commodityRates[sAcc.subtype] || 0;
+                    let metalRate = 0;
+                    if (sAcc.currency === 'AED') {
+                        metalRate = (state.data.commodityRatesAED && state.data.commodityRatesAED[sAcc.subtype]) || 0;
+                        if (!metalRate && state.data.commodityRates[sAcc.subtype]) {
+                            metalRate = state.data.commodityRates[sAcc.subtype] / rate;
+                        }
+                    } else {
+                        metalRate = state.data.commodityRates[sAcc.subtype] || 0;
+                    }
+
                     if (metalRate > 0) {
-                        const weightSold = val / metalRate; // Val is Source Currency (INR)
+                        const weightSold = val / metalRate; // Val is Source Currency
                         state.data.accounts[sIdx].weight = Math.max(0, (state.data.accounts[sIdx].weight || 0) - weightSold);
                         noteSuffix += ` [Sold ${weightSold.toFixed(3)}g]`;
                     }
@@ -6100,8 +6320,9 @@
 
             // 4. Projection (Simple CAGR @ 10% for 5Y/10Y)
             const growthRate = isInv ? 0.10 : 0.04; // 10% for inv, 4% for banks
-            const fv5 = curINR * Math.pow(1 + growthRate, 5);
-            const fv10 = curINR * Math.pow(1 + growthRate, 10);
+            const fv5 = curNative * Math.pow(1 + growthRate, 5);
+            const fv10 = curNative * Math.pow(1 + growthRate, 10);
+            const currSymbol = a.currency === 'AED' ? 'AED' : '₹';
 
             // --- RENDER UI ---
             c.innerHTML = `
@@ -6138,12 +6359,12 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div class="bg-white p-6 rounded-[2.5rem] border text-center shadow-sm">
                             <p class="text-[9px] text-slate-400 font-black uppercase mb-2">5 Year Forecast</p>
-                            <p class="text-xl font-black text-slate-800">₹${Math.round(fv5).toLocaleString()}</p>
+                            <p class="text-xl font-black text-slate-800">${currSymbol} ${Math.round(fv5).toLocaleString()}</p>
                             <p class="text-[8px] text-emerald-600 font-bold mt-1">+${(growthRate * 100)}% CAGR</p>
                         </div>
                         <div class="bg-white p-6 rounded-[2.5rem] border text-center shadow-sm">
                             <p class="text-[9px] text-slate-400 font-black uppercase mb-2">10 Year Forecast</p>
-                            <p class="text-xl font-black text-slate-800">₹${Math.round(fv10).toLocaleString()}</p>
+                            <p class="text-xl font-black text-slate-800">${currSymbol} ${Math.round(fv10).toLocaleString()}</p>
                             <p class="text-[8px] text-emerald-600 font-bold mt-1">Compound Power</p>
                         </div>
                     </div>` : ''
@@ -6340,55 +6561,28 @@
 
         window.renderCharts = function () {
             const r = state.data.settings.rate;
+            const currSym = window.chartCurrency === 'AED' ? 'AED' : '₹';
 
-            // --- 0. PRE-CALCULATIONS (Runway) ---
-            // Liquid Cash: Bank Accounts (Savings/Current) + Cash. Exclude Investments/Commodities.
-            const liquidCash = state.data.accounts
-                .filter(a => !['Investment', 'Mutual Fund', 'Commodity'].includes(a.type))
-                .reduce((sum, a) => sum + (a.currency === 'AED' ? a.balance * r : a.balance), 0);
-
-            // Avg Monthly Expense (Last 6 Months)
-            const dNow = new Date();
-            let totalExp6m = 0;
-            for (let i = 0; i < 6; i++) {
-                const queryDate = new Date(dNow.getFullYear(), dNow.getMonth() - i, 1);
-                const txs = state.data.transactions.filter(t => {
-                    const td = new Date(t.date);
-                    return td.getMonth() === queryDate.getMonth() && td.getFullYear() === queryDate.getFullYear() && t.type === 'expense';
-                });
-                totalExp6m += txs.reduce((s, t) => s + (t.currency === 'AED' ? Number(t.amount) * r : Number(t.amount)), 0);
-            }
-            const avgMonthlyExp = totalExp6m / 6;
-            const runway = avgMonthlyExp > 0 ? (liquidCash / avgMonthlyExp).toFixed(1) : '∞';
-
-            const runwayEl = document.getElementById('runway-months');
-            if (runwayEl) {
-                runwayEl.innerText = runway;
-                const limit = state.data.settings.minRunwayMonths || 6;
-                const isDanger = runway < (limit / 2);
-                const isGood = runway >= limit;
-                runwayEl.className = `text-4xl font-black ${isDanger ? 'text-red-400' : (isGood ? 'text-emerald-400' : 'text-amber-400')}`;
-            }
-
-            // --- CHART CONTEXTS ---
-            const chartIds = ['chart-forecast', 'chart-allocation', 'chart-savings', 'chart-lifestyle', 'chart-debt-burndown'];
+            // --- INIT CANVAS CONTEXTS ---
+            const chartIds = ['chart-lifestyle', 'chart-allocation'];
             const ctxs = {};
+
             chartIds.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) ctxs[id] = el.getContext('2d');
+                const canvas = document.getElementById(id);
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    const existingChart = Chart.getChart(canvas);
+                    if (existingChart) existingChart.destroy();
+                    ctxs[id] = ctx;
+                }
             });
 
-            if (Object.keys(ctxs).length === 0) return;
-
-            // --- 1. LIFESTYLE MONITOR (Expense Trends) ---
+            // --- 1. LIFESTYLE (Expense Trends) ---
             if (ctxs['chart-lifestyle']) {
-                // 1. Identify Top 3 Categories in last 6 months
                 const catTotals = {};
-                // Re-use logic to analyze 6 months
                 const sixMonthsLabels = [];
                 for (let i = 5; i >= 0; i--) {
-                    const d = new Date();
-                    d.setMonth(d.getMonth() - i);
+                    const d = new Date(); d.setMonth(d.getMonth() - i);
                     sixMonthsLabels.push(d.toLocaleString('default', { month: 'short' }));
                 }
 
@@ -6396,15 +6590,13 @@
                     const td = new Date(t.date);
                     const ageInMonths = (new Date().getFullYear() - td.getFullYear()) * 12 + (new Date().getMonth() - td.getMonth());
                     if (ageInMonths < 6 && t.type === 'expense') {
-                        const val = t.currency === 'AED' ? Number(t.amount) * r : Number(t.amount);
+                        const val = window.toChartCur(Number(t.amount), t.currency || 'AED', r);
                         catTotals[t.category] = (catTotals[t.category] || 0) + val;
                     }
                 });
 
-                // Sort and pick top 3
                 const topCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
 
-                // Build datasets
                 const datasets = topCats.map((cat, idx) => {
                     const dataPoints = [];
                     for (let i = 5; i >= 0; i--) {
@@ -6414,15 +6606,15 @@
                                 const td = new Date(t.date);
                                 return t.category === cat && t.type === 'expense' && td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear();
                             })
-                            .reduce((s, t) => s + (t.currency === 'AED' ? Number(t.amount) * r : Number(t.amount)), 0);
+                            .reduce((s, t) => s + window.toChartCur(Number(t.amount), t.currency || 'AED', r), 0);
                         dataPoints.push(monthExp);
                     }
-                    const colors = ['#ec4899', '#8b5cf6', '#06b6d4']; // Pink, Violet, Cyan
+                    const colors = ['#ec4899', '#8b5cf6', '#06b6d4'];
                     return {
                         label: cat,
                         data: dataPoints,
                         borderColor: colors[idx],
-                        backgroundColor: colors[idx] + '20', // transparent fill
+                        backgroundColor: colors[idx] + '20',
                         tension: 0.4,
                         borderWidth: 3,
                         pointRadius: 4
@@ -6432,114 +6624,18 @@
                 new Chart(ctxs['chart-lifestyle'], {
                     type: 'line',
                     data: { labels: sixMonthsLabels, datasets: datasets },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        scales: { x: { grid: { display: false } }, y: { display: false } } // minimalist
-                    }
+                    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false } }, y: { display: false } } }
                 });
             }
 
-            // --- 2. DEBT BURNDOWN (Countdown) ---
-            if (ctxs['chart-debt-burndown']) {
-                // Current Total Debt
-                const totalDebt = state.data.debts
-                    .filter(d => !d.settled && d.type === 'payable')
-                    .reduce((s, d) => s + (Number(d.amount) * (d.currency === 'AED' ? r : 1)), 0);
-
-                // Avg Repayment Rate (Last 6 months settlement categories)
-                // "Settlement" category is used for debt payments
-                let totalPaid6m = 0;
-                const txs = state.data.transactions.filter(t => {
-                    const ageInMonths = (new Date().getFullYear() - new Date(t.date).getFullYear()) * 12 + (new Date().getMonth() - new Date(t.date).getMonth());
-                    return ageInMonths < 6 && (t.category === 'Settlement' || t.category === 'Debt Repayment') && t.type === 'expense';
-                });
-                totalPaid6m = txs.reduce((s, t) => s + (t.currency === 'AED' ? Number(t.amount) * r : Number(t.amount)), 0);
-
-                const avgRepay = totalPaid6m / 6 || (totalDebt * 0.05); // Fallback to 5% if no history
-
-                const monthsToFreedom = avgRepay > 0 ? Math.ceil(totalDebt / avgRepay) : 0;
-
-                const labels = [];
-                const data = [];
-
-                // Show 12 months projection or until 0
-                const projectMonths = Math.min(monthsToFreedom + 2, 24); // Cap visualization
-                let runningDebt = totalDebt;
-
-                for (let i = 0; i <= projectMonths; i++) {
-                    labels.push(i === 0 ? 'Now' : `+${i}M`);
-                    data.push(Math.max(0, runningDebt));
-                    runningDebt -= avgRepay;
-                    if (runningDebt < -avgRepay) break; // Stop when clear
-                }
-
-                new Chart(ctxs['chart-debt-burndown'], {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Debt Balance',
-                            data: data,
-                            borderColor: '#ffffff',
-                            backgroundColor: 'rgba(255,255,255,0.2)',
-                            fill: true,
-                            tension: 0.1,
-                            borderDash: [5, 5]
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { ticks: { color: 'rgba(255,255,255,0.6)', font: { size: 9 } }, grid: { display: false } },
-                            y: { display: false }
-                        }
-                    }
-                });
-            }
-
-            // --- 3. NET WORTH FORECAST ---
-            if (ctxs['chart-forecast']) {
-                // Calc current NW in INR
-                let currentNW = 0;
-                state.data.accounts.forEach(a => currentNW += (a.currency === 'AED' ? a.balance * r : a.balance));
-                state.data.debts.filter(d => !d.settled && d.type === 'receivable').forEach(d => currentNW += (Number(d.amount) * (d.currency === 'AED' ? r : 1)));
-                state.data.debts.filter(d => !d.settled && d.type === 'payable').forEach(d => currentNW -= (Number(d.amount) * (d.currency === 'AED' ? r : 1)));
-
-                const growthRate = (state.data.settings.forecastReturn || 8) / 100;
-                const labels = ['Now', '+1Y', '+2Y', '+3Y', '+4Y', '+5Y'];
-                const data = [];
-                for (let i = 0; i <= 5; i++) data.push(currentNW * Math.pow(1 + growthRate, i));
-
-                new Chart(ctxs['chart-forecast'], {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Projected Wealth (INR)',
-                            data: data,
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 4
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
-                });
-            }
-
-            // --- 4. DETAILED ALLOCATION ---
+            // --- 2. DETAILED ALLOCATION ---
             if (ctxs['chart-allocation']) {
                 const breakdown = {};
                 state.data.accounts.forEach(a => {
                     let key = a.type;
                     if (a.type === 'Commodity') key = a.subtype || 'Gold';
-                    const val = a.currency === 'AED' ? a.balance * r : a.balance;
-                    breakdown[key] = (breakdown[key] || 0) + val;
+                    const val = window.toChartCur(Number(a.balance), a.currency || 'AED', r);
+                    if (val > 0) breakdown[key] = (breakdown[key] || 0) + val;
                 });
 
                 new Chart(ctxs['chart-allocation'], {
@@ -6553,42 +6649,6 @@
                         }]
                     },
                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } }
-                });
-            }
-
-            // --- 5. SAVINGS TREND (6 MONTHS) ---
-            if (ctxs['chart-savings']) {
-                const months = [];
-                const savingsRates = [];
-
-                for (let i = 5; i >= 0; i--) {
-                    const d = new Date(); d.setMonth(d.getMonth() - i);
-                    months.push(d.toLocaleString('default', { month: 'short' }));
-
-                    const txs = state.data.transactions.filter(t => {
-                        const td = new Date(t.date); return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear();
-                    });
-
-                    const inc = txs.filter(t => t.type === 'income').reduce((s, t) => s + (t.currency === 'AED' ? t.amount * r : t.amount), 0);
-                    const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + (t.currency === 'AED' ? t.amount * r : t.amount), 0);
-
-                    savingsRates.push(inc > 0 ? ((inc - exp) / inc * 100) : 0);
-                }
-
-                new Chart(ctxs['chart-savings'], {
-                    type: 'line',
-                    data: {
-                        labels: months,
-                        datasets: [{
-                            label: 'Savings Rate %',
-                            data: savingsRates,
-                            borderColor: '#3b82f6',
-                            borderDash: [5, 5],
-                            tension: 0.3,
-                            pointRadius: 3
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
                 });
             }
         };
@@ -6818,6 +6878,7 @@
                         if (!state.data.goals) state.data.goals = [];
                         if (!state.data.portfolio) state.data.portfolio = {};
                         if (!state.data.commodityRates) state.data.commodityRates = { Gold: 7200, Silver: 90, Platinum: 2500, Palladium: 3000 };
+                        if (!state.data.commodityRatesAED) state.data.commodityRatesAED = { Gold: 315, Silver: 3.5, Platinum: 110, Palladium: 130 };
                         if (!state.data.contacts) state.data.contacts = []; // New Feature: People Ledger
                         if (!state.data.allocationTargets) state.data.allocationTargets = { 'Real Estate': 0, 'Gold': 20, 'Equity': 50, 'Cash': 30 };
                         if (!state.data.budgets) state.data.budgets = {};
@@ -6844,6 +6905,7 @@
                             window.checkDueDebts();
                             window.checkSelfReminders();
                             window.fetchExchangeRate();
+                            window.fetchMetalsRate();
                             window.checkSubscriptions();
                             await window.checkBudgetRollover();
                             window.renderApp();
