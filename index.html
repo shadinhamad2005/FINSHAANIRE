@@ -6071,7 +6071,7 @@
             }
 
             // Balance Check
-            if (acc.balance < finalTxAmt) {
+            if (d.type !== 'receivable' && acc.balance < finalTxAmt) {
                 window.showToast(`Insufficient Funds in ${acc.name}`, "error");
                 return;
             }
