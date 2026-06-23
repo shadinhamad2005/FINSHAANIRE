@@ -4,12 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finshaanire v2.5 | Wealth Hub</title>
+    <title>FI SHAANIRE v2.5 | Wealth Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script>
@@ -153,7 +151,6 @@
             border-color: var(--border-color) !important;
         }
 
-        .border-slate-200,
         /* CYBER-SLATE IDENTITY */
         .logo-text {
             background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 50%, var(--text-main) 100%);
@@ -350,7 +347,7 @@
         <div class="w-full max-w-md space-y-10 text-center">
             <div>
                 <div class="fs-logo-modern w-20 h-20 text-4xl mx-auto mb-6">FS</div>
-                <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 text-center">Finshaanire</h1>
+                <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 text-center">FI SHAANIRE</h1>
                 <p class="text-slate-500 mt-2 font-medium text-center">Wealth Management and Budgeting.</p>
             </div>
             <div class="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 space-y-6 text-center">
@@ -437,7 +434,7 @@
             <div class="max-w-7xl mx-auto px-6 h-full flex justify-between items-center">
                 <div class="flex items-center space-x-3 text-left">
                     <div class="fs-logo-modern w-10 h-10 text-xl">FS</div>
-                    <span class="text-xl font-black tracking-tight logo-text">Finshaanire</span>
+                    <span class="text-xl font-black tracking-tight logo-text">FI SHAANIRE</span>
                 </div>
                 <div class="flex items-center space-x-4">
                     <button onclick="window.openModal('auth')"
@@ -489,96 +486,77 @@
             </section>
 
             <!-- Summary -->
-            <section class="grid grid-cols-1 lg:grid-cols-3 gap-8 text-center">
-                <div
-                    class="lg:col-span-2 bg-white rounded-[2.5rem] p-10 border border-slate-200 flex flex-col justify-between shadow-sm relative overflow-hidden text-center">
-                    <div
-                        class="flex flex-col md:flex-row justify-between items-start md:items-center text-center md:text-left gap-6">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-slate-400 text-[10px] font-black uppercase tracking-widest">Current Net
-                                Wealth</p>
-                            <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-1">
-                                <span id="total-primary"
-                                    class="text-4xl md:text-6xl font-black tracking-tighter text-slate-900 break-all">₹0.00</span>
-                                <span id="total-secondary"
-                                    class="text-xl font-bold text-teal-600/60 whitespace-nowrap">AED 0.00</span>
+            <!-- Summary -->
+            <section class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- HERO BOX -->
+                <div class="lg:col-span-2 flex flex-col gap-8">
+                    <div class="bg-white rounded-[2.5rem] p-10 border border-slate-200 flex flex-col justify-between shadow-sm relative overflow-hidden h-full">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center relative z-10 gap-6">
+                            <div class="text-left">
+                                <h1 class="text-[10px] font-black text-[#8b1a30] tracking-widest uppercase mb-2">CURRENT NET WEALTH</h1>
+                                <span id="total-primary" class="text-5xl md:text-6xl font-black text-[#8b1a30] tracking-tight block mb-1">AED 0.00</span>
+                                <span id="total-secondary" class="text-lg font-bold text-teal-500 block">≈ ₹0.00</span>
+                            </div>
+
+                            <div class="flex gap-3 shrink-0">
+                                <button onclick="window.openModal('budget')" class="w-12 h-12 flex items-center justify-center bg-white rounded-full border border-rose-100 text-rose-600 hover:bg-rose-50 transition-colors" title="Budgeting"><i data-lucide="target" class="w-5 h-5"></i></button>
+                                <button onclick="window.openModal('goals')" class="w-12 h-12 flex items-center justify-center bg-white rounded-full border border-rose-100 text-rose-600 hover:bg-rose-50 transition-colors" title="Goals"><i data-lucide="pie-chart" class="w-5 h-5"></i></button>
+                                <button onclick="window.openModal('analytics')" class="w-12 h-12 flex items-center justify-center bg-white rounded-full border border-rose-100 text-rose-600 hover:bg-rose-50 transition-colors" title="Charts"><i data-lucide="line-chart" class="w-5 h-5"></i></button>
+                                <button onclick="window.toggleVisibility()" class="w-12 h-12 flex items-center justify-center bg-white rounded-full border border-rose-100 text-rose-600 hover:bg-rose-50 transition-colors"><i data-lucide="eye" id="vis-icon" class="w-5 h-5"></i></button>
+                                <button onclick="window.openModal('settings')" class="w-12 h-12 flex items-center justify-center bg-white rounded-full border border-rose-100 text-rose-600 hover:bg-rose-50 transition-colors"><i data-lucide="settings" class="w-5 h-5"></i></button>
                             </div>
                         </div>
-                        <div class="flex flex-wrap gap-2 justify-center md:justify-end w-full md:w-auto shrink-0">
-                            <button onclick="window.openModal('budget')"
-                                class="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-400"
-                                title="Budgeting"><i data-lucide="target" class="w-5 h-5 mx-auto"></i></button>
-                            <button onclick="window.openModal('analytics')"
-                                class="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-400"
-                                title="Charts"><i data-lucide="pie-chart" class="w-5 h-5 mx-auto"></i></button>
-                            <button onclick="window.openModal('performance')"
-                                class="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-400"
-                                title="Growth"><i data-lucide="trending-up" class="w-5 h-5 mx-auto"></i></button>
-                            <button onclick="window.toggleVisibility()"
-                                class="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-400"><i
-                                    data-lucide="eye" id="vis-icon" class="w-5 h-5 mx-auto"></i></button>
-                            <button onclick="window.openModal('settings')"
-                                class="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-400"><i
-                                    data-lucide="settings" class="w-5 h-5 mx-auto"></i></button>
-                        </div>
-                    </div>
-                    <div
-                        class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-12 border-t border-slate-100 pt-8 text-center text-center text-center">
-                        <div>
-                            <p class="text-[9px] uppercase font-black text-slate-400 mb-1 text-center">UAE Vault</p>
-                            <p id="uae-val" class="font-bold text-lg text-slate-800 text-center">AED 0.00</p>
-                        </div>
-                        <div>
-                            <p class="text-[9px] uppercase font-black text-slate-400 mb-1 text-center">India Portfolio
-                            </p>
-                            <p id="india-val" class="font-bold text-lg text-slate-800 text-center">₹0.00</p>
-                        </div>
-                        <div>
-                            <p class="text-[9px] uppercase font-black text-slate-400 mb-1 text-red-500 text-center">I
-                                Owe</p>
-                            <p id="pay-val" class="font-bold text-lg text-red-500 text-center">₹0.00</p>
-                        </div>
-                        <div>
-                            <p class="text-[9px] uppercase font-black text-slate-400 mb-1 text-emerald-600 text-center">
-                                Investments</p>
-                            <p id="inv-val" class="font-bold text-lg text-emerald-600 text-center">₹0.00</p>
+                        
+                        <div class="grid grid-cols-2 lg:grid-cols-5 gap-6 mt-16 text-center pt-8">
+                            <div>
+                                <p class="text-[9px] uppercase font-black text-[#8b1a30] mb-2">UAE Vault</p>
+                                <p id="uae-val" class="font-black text-lg text-slate-800">AED 0.00</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] uppercase font-black text-[#8b1a30] mb-2">India Portfolio</p>
+                                <p id="india-val" class="font-black text-lg text-slate-800">₹0.00</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] uppercase font-black text-[#8b1a30] mb-2">Owed To Me</p>
+                                <p id="rec-val" class="font-black text-lg text-blue-500">₹0.00</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] uppercase font-black text-[#8b1a30] mb-2">I Owe</p>
+                                <p id="pay-val" class="font-black text-lg text-rose-500">₹0.00</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] uppercase font-black text-[#8b1a30] mb-2">Investments</p>
+                                <p id="inv-val" class="font-black text-lg text-[#8b1a30]">₹0.00</p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div
-                    class="bg-white rounded-[2.5rem] p-8 border border-slate-200 flex flex-col justify-between shadow-sm text-center">
-                    <h3
-                        class="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center mb-6 justify-center lg:justify-start text-center">
-                        <i data-lucide="layout-grid" class="w-4 h-4 mr-2 text-center text-center text-center"></i>
-                        Navigation
+                <!-- NAVIGATION PANEL -->
+                <div class="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col text-left h-full">
+                    <h3 class="text-xs font-black text-[#8b1a30] uppercase tracking-widest flex items-center mb-6">
+                        <i data-lucide="layout-grid" class="w-4 h-4 mr-2"></i> Navigation
                     </h3>
-                    <div class="grid grid-cols-2 gap-4 text-center">
-                        <button onclick="window.openModal('transaction')"
-                            class="flex flex-col items-center justify-center p-6 rounded-3xl bg-emerald-500 text-white shadow-lg active:scale-95 transition-all text-center">
-                            <i data-lucide="plus" class="w-6 h-6 mb-2 mx-auto text-center"></i><span
-                                class="text-[10px] font-black uppercase tracking-widest text-center">Entry</span>
+                    <div class="grid grid-cols-2 gap-4 flex-grow">
+                        <button onclick="window.openModal('transaction')" class="flex flex-col items-center justify-center p-6 rounded-3xl bg-[#d91e49] text-white shadow-lg active:scale-95 transition-all">
+                            <i data-lucide="plus" class="w-6 h-6 mb-2"></i>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Entry</span>
                         </button>
-                        <button onclick="window.openModal('transfer')"
-                            class="flex flex-col items-center justify-center p-6 rounded-3xl bg-slate-900 text-white shadow-lg active:scale-95 transition-all text-center">
-                            <i data-lucide="arrow-right-left" class="w-6 h-6 mb-2 mx-auto text-center"></i><span
-                                class="text-[10px] font-black uppercase tracking-widest text-center">Transfer</span>
+                        <button onclick="window.openModal('transfer')" class="flex flex-col items-center justify-center p-6 rounded-3xl bg-[#d91e49] text-white shadow-lg active:scale-95 transition-all">
+                            <i data-lucide="arrow-right-left" class="w-6 h-6 mb-2"></i>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Transfer</span>
                         </button>
-                        <button onclick="window.openModal('accounts')"
-                            class="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-100 hover:bg-slate-50 text-slate-600 active:scale-95 transition-all text-center">
-                            <i data-lucide="wallet" class="w-6 h-6 mb-2 mx-auto text-emerald-600 text-center"></i><span
-                                class="text-[10px] font-black uppercase text-center text-center">Asset</span>
+                        <button onclick="window.openModal('accounts')" class="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-50 hover:bg-slate-50 active:scale-95 transition-all">
+                            <i data-lucide="wallet" class="w-6 h-6 mb-2 text-[#8b1a30]"></i>
+                            <span class="text-[10px] font-black uppercase text-[#8b1a30]">Asset</span>
                         </button>
-                        <button onclick="window.openModal('debt')"
-                            class="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-100 hover:bg-slate-50 text-slate-600 active:scale-95 transition-all text-center">
-                            <i data-lucide="users" class="w-6 h-6 mb-2 mx-auto text-amber-500 text-center"></i><span
-                                class="text-[10px] font-black uppercase text-center">Debts</span>
+                        <button onclick="window.openModal('debt')" class="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-50 hover:bg-slate-50 active:scale-95 transition-all">
+                            <i data-lucide="users" class="w-6 h-6 mb-2 text-amber-500"></i>
+                            <span class="text-[10px] font-black uppercase text-[#8b1a30]">Debts</span>
                         </button>
-                        <button onclick="window.openModal('subscriptions')"
-                            class="col-span-2 flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-100 hover:bg-slate-50 text-slate-600 active:scale-95 transition-all text-center">
-                            <i data-lucide="refresh-cw"
-                                class="w-6 h-6 mb-2 mx-auto text-indigo-500 text-center"></i><span
-                                class="text-[10px] font-black uppercase text-center">Recurring Auto-Pay</span>
+                        <button onclick="window.openModal('subscriptions')" class="col-span-2 flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-50 hover:bg-slate-50 active:scale-95 transition-all">
+                            <i data-lucide="refresh-cw" class="w-6 h-6 mb-2 text-indigo-500"></i>
+                            <span class="text-[10px] font-black uppercase text-[#8b1a30]">Recurring Auto-Pay</span>
                         </button>
                     </div>
                 </div>
@@ -602,6 +580,17 @@
                     </h3>
                     <div id="india-list" class="grid gap-4 text-center text-center"></div>
                 </div>
+            </section>
+
+            <!-- Goals Section -->
+            <section class="mb-8 hidden" id="goals-section">
+                <div class="flex items-center justify-between mb-4 px-2">
+                    <h3 class="font-black text-slate-400 text-[11px] uppercase tracking-widest flex items-center">
+                        <i data-lucide="target" class="w-4 h-4 mr-2"></i> My Goals (Sinking Funds)
+                    </h3>
+                    <button onclick="window.openModal('goals')" class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest hover:text-emerald-600 transition-colors">+ Manage</button>
+                </div>
+                <div id="goals-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
             </section>
 
             <!-- LEDGER BUTTON CARD -->
@@ -697,8 +686,8 @@
                 budgets: {},
                 goals: [], // { id, name, target, saved, currency, icon }
                 portfolio: {}, // { schemeCode: { nav, date, name } }
-                commodityRates: { Gold: 7200, Silver: 90, Platinum: 2500, Palladium: 3000 }, // INR per gram default
-                commodityRatesAED: { Gold: 315, Silver: 3.5, Platinum: 110, Palladium: 130 }, // AED per gram default
+                commodityRates: { Gold: 7200, Silver: 90 }, // INR per gram default
+                commodityRatesAED: { Gold: 315, Silver: 3.5 }, // AED per gram default
                 allocationTargets: { 'Real Estate': 0, 'Gold': 20, 'Equity': 50, 'Cash': 30 },
                 settings: { rate: 22.75, isPrivate: false, theme: 'emerald' },
                 incomeCategories: ['Salary', 'Bonus', 'Investment Return', 'Other'],
@@ -898,13 +887,15 @@
             Object.keys(t).forEach(k => root.style.setProperty(k, t[k]));
 
             // PERSISTENCE: Save to LocalStorage for Login Screen access
-            localStorage.setItem('fs_theme', theme);
+            try { localStorage.setItem('fs_theme', theme); } catch(e) { console.warn('LocalStorage unavailable', e); }
         };
 
         // BOOT: Load saved theme immediately (for Login Screen)
         (function () {
-            const saved = localStorage.getItem('fs_theme');
-            if (saved) window.applyTheme(saved);
+            try {
+                const saved = localStorage.getItem('fs_theme');
+                if (saved) window.applyTheme(saved);
+            } catch(e) { console.warn('LocalStorage unavailable', e); }
         })();
 
         // --- CORE APPLICATION FUNCTIONS ---
@@ -960,7 +951,8 @@
                     }
 
                     // SNOOZE CHECK: Check if snoozed in last 5 hours
-                    const snoozed = localStorage.getItem('reminder_snooze');
+                    let snoozed = null;
+                    try { snoozed = localStorage.getItem('reminder_snooze'); } catch(e) {}
                     // 5 hours = 5 * 60 * 60 * 1000 = 18000000 ms
                     if (snoozed && (Date.now() - parseInt(snoozed)) < 18000000) return;
 
@@ -972,7 +964,7 @@
 
                     // ACTION 2: Ignore (Snooze for 5h)
                     document.getElementById('remit-ignore-btn').onclick = () => {
-                        localStorage.setItem('reminder_snooze', Date.now().toString());
+                        try { localStorage.setItem('reminder_snooze', Date.now().toString()); } catch(e) {}
                         overlay.classList.add('hidden');
                         window.showToast("Reminders snoozed for 5 hours", "info");
                     };
@@ -1080,110 +1072,12 @@
         }
         window.fetchExchangeRate = fetchExchangeRate;
 
-        async function fetchMetalsRate() {
-            const today = new Date().toISOString().split('T')[0];
-            // 1. Check if we already fetched today to save quota
-            if (state.data.settings.lastMetalsFetch === today) return;
-
-            try {
-                // 2. Fetch using user's metalpriceapi.com key. Requesting base AED to minimize payload and calculation complexity.
-                const url = "https://api.metalpriceapi.com/v1/latest?api_key=9f5ccca8bfeae6c25f84b8e128e521a9&base=AED&currencies=XAU,XAG";
-                const res = await fetch(url);
-                const data = await res.json();
-
-                if (data && data.success) {
-                    const troyOunceToGram = 31.1034768;
-                    const rates = data.rates;
-
-                    // 3. Math Conversion (API returns '1 AED = X Ounces of Metal')
-                    // Calculate price per Ounce in AED (1 / rate)
-                    const goldAedPerOunce = 1 / rates.XAU;
-                    const silverAedPerOunce = 1 / rates.XAG;
-
-                    // Calculate price per Gram in AED
-                    const goldAED = goldAedPerOunce / troyOunceToGram;
-                    const silverAED = silverAedPerOunce / troyOunceToGram;
-
-                    // Calculate INR price locally using the User's Exchange Rate (AED * Rate = INR)
-                    const localExchangeRate = state.data.settings.rate || 22.75;
-                    const goldINR = goldAED * localExchangeRate;
-                    const silverINR = silverAED * localExchangeRate;
-
-                    // 4. Update State
-                    if (!state.data.commodityRatesAED) state.data.commodityRatesAED = {};
-                    if (!state.data.commodityRates) state.data.commodityRates = {};
-
-                    state.data.commodityRatesAED.Gold = parseFloat(goldAED.toFixed(2));
-                    state.data.commodityRatesAED.Silver = parseFloat(silverAED.toFixed(2));
-
-                    state.data.commodityRates.Gold = parseFloat(goldINR.toFixed(2));
-                    state.data.commodityRates.Silver = parseFloat(silverINR.toFixed(2));
-
-                    // 5. Mark today as fetched & Save
-                    state.data.settings.lastMetalsFetch = today;
-                    await window.updateDb();
-
-                    console.log("✅ MetalPriceAPI Live Sync Complete.");
-
-                    // 6. Refresh UI
-                    window.recalcDynamicAssets();
-                    window.renderApp();
-                }
-            } catch (e) {
-                console.warn("MetalPriceAPI fetch failed. Using cached rates.", e);
-            }
-        }
+        async function fetchMetalsRate() { return; }
         window.fetchMetalsRate = fetchMetalsRate;
 
-        // Recalculate balances for Commodities (Weight * Rate) and Funds (Units * NAV)
-        window.recalcDynamicAssets = function () {
-            state.data.accounts.forEach(a => {
-                if (a.type === 'Commodity' && a.weight) {
-                    const metal = Object.keys(state.data.commodityRates).find(k => a.name.includes(k)) || a.subtype || 'Gold';
+        window.recalcDynamicAssets = function () { return; };
 
-                    // Respect the account's currency setting
-                    if (a.currency === 'AED') {
-                        let rateInAED = (state.data.commodityRatesAED && state.data.commodityRatesAED[metal]) || 0;
-                        if (!rateInAED && state.data.commodityRates[metal]) {
-                            rateInAED = state.data.commodityRates[metal] / state.data.settings.rate;
-                        }
-                        const valInAED = a.weight * rateInAED;
-                        a.balance = window.toCurrency(valInAED);
-                    } else {
-                        const rateInINR = state.data.commodityRates[metal] || 0;
-                        const valInINR = a.weight * rateInINR;
-                        a.balance = window.toCurrency(valInINR);
-                        a.currency = 'INR';
-                    }
-                }
-                if (a.type === 'Mutual Fund' && a.units && a.schemeCode && state.data.portfolio[a.schemeCode]) {
-                    const nav = parseFloat(state.data.portfolio[a.schemeCode].nav);
-                    a.balance = window.toCurrency(a.units * nav);
-                    a.currency = 'INR'; // API is INR-only
-                }
-            });
-        };
-
-        window.refreshFund = async function (accId) {
-            const acc = state.data.accounts.find(a => a.id === accId);
-            if (!acc || !acc.schemeCode) return;
-            try {
-                const res = await fetch(`https://api.mfapi.in/mf/${acc.schemeCode}`);
-                const json = await res.json();
-                if (json.status === 'SUCCESS' && json.data && json.data.length > 0) {
-                    const latest = json.data[0];
-                    if (!state.data.portfolio) state.data.portfolio = {};
-                    state.data.portfolio[acc.schemeCode] = {
-                        nav: latest.nav,
-                        date: latest.date,
-                        name: json.meta.scheme_name
-                    };
-                    await updateDb();
-                    window.recalcDynamicAssets();
-                    window.renderApp();
-                }
-            } catch (e) { console.error("MF Fetch Error", e); }
-        };
+        window.refreshFund = async function (accId) { return; };
 
         function renderApp() {
             const dashboard = document.getElementById('app-content'); if (!dashboard || dashboard.style.display === 'none') return;
@@ -1251,7 +1145,7 @@
                     iconColor = 'bg-cyan-100 text-cyan-600';
                 }
 
-                const syncBtn = a.type === 'Mutual Fund' ? `<button onclick="event.stopPropagation(); window.refreshFund('${a.id}')" class="p-2 bg-slate-900 text-white rounded-full scale-75 hover:bg-emerald-500"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>` : '';
+                const syncBtn = '';
 
                 return `<div class="bg-white p-4 rounded-2xl flex justify-between items-center border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-all text-center group ${isChild ? 'bg-slate-50 border-0 border-b last:border-0 border-slate-100 rounded-none' : ''}" onclick="window.viewAccountLedger('${a.id}')">
                     <div class="flex items-center space-x-3 text-left">
@@ -1259,7 +1153,7 @@
                             <i data-lucide="${icon}" class="w-5 h-5"></i>
                         </div>
                         <div>
-                            <p class="font-bold text-slate-900 text-sm text-left gap-2 flex items-center">${a.name} ${syncBtn}</p>
+                            <p class="font-bold text-slate-900 text-sm text-left gap-2 flex items-center">${a.name}</p>
                             <p class="text-[9px] text-slate-400 uppercase font-black text-left">${subtext}</p>
                         </div>
                     </div>
@@ -1291,9 +1185,88 @@
             ut('total-primary', priv ? privText : window.fmtMoney(rawNetAED, 'AED'));
             ut('total-secondary', priv ? privText : `≈ ` + window.fmtMoney(net, 'INR'));
 
+            // Snapshot Net Worth
+            if (!state.data.historicalSnapshots) {
+                state.data.historicalSnapshots = [];
+                // Generate some mock history for demonstration (past 3 months growing slowly)
+                for (let i = 3; i > 0; i--) {
+                    const d = new Date();
+                    d.setMonth(d.getMonth() - i);
+                    state.data.historicalSnapshots.push({
+                        month: d.toISOString().slice(0, 7),
+                        netWorthAED: rawNetAED * (1 - (0.05 * i)) // 5% growth per month mock
+                    });
+                }
+            }
+            const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+            const lastSnap = state.data.historicalSnapshots[state.data.historicalSnapshots.length - 1];
+            if (!lastSnap || lastSnap.month !== currentMonthStr) {
+                state.data.historicalSnapshots.push({
+                    month: currentMonthStr,
+                    netWorthAED: rawNetAED
+                });
+            } else {
+                lastSnap.netWorthAED = rawNetAED;
+            }
+
+            // Calculate Safe To Spend (Liquid Cash - Goals Saved)
+            let liquidCashAED = 0;
+            accounts.forEach(a => {
+                if (['Bank Account', 'Cash'].includes(a.type)) {
+                    liquidCashAED += (a.currency === 'AED' ? a.balance : a.balance / r);
+                }
+            });
+            let totalGoalsAED = 0;
+            (state.data.goals || []).forEach(g => {
+                totalGoalsAED += (g.currency === 'AED' ? Number(g.saved) : Number(g.saved) / r);
+            });
+            const safeToSpendAED = liquidCashAED - totalGoalsAED;
+            ut('safe-to-spend-budget', priv ? privText : window.fmtMoney(safeToSpendAED, 'AED'));
+
+            // Render Goals to Dashboard
+            const gl = document.getElementById('goals-list');
+            const gSec = document.getElementById('goals-section');
+            if (gl && gSec) {
+                if (state.data.goals && state.data.goals.length > 0) {
+                    gSec.classList.remove('hidden');
+                    gl.innerHTML = state.data.goals.map(g => {
+                        const pct = Math.min(100, Math.round((g.saved / g.target) * 100));
+                        return `
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm text-left relative overflow-hidden group cursor-pointer" onclick="window.openModal('goals')">
+                            <div class="absolute inset-0 bg-slate-50 translate-y-[100%] group-hover:translate-y-[0%] transition-transform duration-500 ease-in-out"></div>
+                            <div class="relative z-10">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center">
+                                            <i data-lucide="${g.icon || 'target'}" class="w-5 h-5"></i>
+                                        </div>
+                                        <div>
+                                            <h4 class="font-bold text-sm text-slate-800">${g.name}</h4>
+                                            <p class="text-[9px] font-black uppercase text-slate-400">Target: ${window.fmtMoney(g.target, g.currency)}</p>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs font-black text-indigo-500">${pct}%</span>
+                                </div>
+                                
+                                <div class="w-full bg-slate-100 rounded-full h-2.5 mb-2 overflow-hidden flex">
+                                    <div class="bg-indigo-500 h-2.5 rounded-full" style="width: ${pct}%"></div>
+                                </div>
+                                <div class="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                    <span>Saved: ${window.fmtMoney(g.saved, g.currency)}</span>
+                                    <span>Left: ${window.fmtMoney(g.target - g.saved, g.currency)}</span>
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                } else {
+                    gSec.classList.add('hidden');
+                }
+            }
+
             ut('uae-val', priv ? privText : window.fmtMoney(uae, 'AED'));
             ut('india-val', priv ? privText : window.fmtMoney(ind, 'INR'));
-            ut('pay-val', (priv ? '' : '-') + window.fmtMoney(pay, 'INR'));
+            ut('rec-val', (priv ? privText : window.fmtMoney(rec, 'INR')));
+            ut('pay-val', (priv ? privText : '-' + window.fmtMoney(pay, 'INR')));
             ut('inv-val', priv ? privText : window.fmtMoney(inv, 'INR'));
 
             // Safe User Label Update
@@ -1510,6 +1483,14 @@
                         <div id="category-details-container-modal" class="mt-6 text-left hidden fade-in"></div>
                     </div>
 
+                    <!-- Historical Net Worth Trend -->
+                    <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Net Worth Trend</h4>
+                        <div class="relative h-48 w-full">
+                            <canvas id="networth-trend-chart"></canvas>
+                        </div>
+                    </div>
+
                     <!-- Expense Trend -->
                     <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
                         <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Expense Trend (6 Mo)</h4>
@@ -1522,8 +1503,62 @@
             // Render Charts safely after DOM updates
             setTimeout(() => {
                 window.renderAllocationChart(true);
+                window.renderNetWorthTrend();
                 window.renderExpenseTrend();
             }, 200);
+        };
+
+        window.renderNetWorthTrend = function () {
+            const ctx = document.getElementById('networth-trend-chart');
+            if (!ctx || !state.data.historicalSnapshots || state.data.historicalSnapshots.length === 0) return;
+
+            if (window.netWorthChartInstance) window.netWorthChartInstance.destroy();
+
+            const labels = state.data.historicalSnapshots.map(s => {
+                const [y, m] = s.month.split('-');
+                return new Date(y, m - 1).toLocaleString('default', { month: 'short', year: '2-digit' });
+            });
+            const data = state.data.historicalSnapshots.map(s => s.netWorthAED);
+
+            window.netWorthChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Net Worth (AED)',
+                        data: data,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#10b981',
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' AED ' + Number(context.raw).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { family: "'Plus Jakarta Sans'", size: 10, weight: 'bold' } } },
+                        y: { display: false, min: Math.min(...data) * 0.95 }
+                    }
+                }
+            });
         };
 
         window.renderAllocationChart = function (isModal = false) {
@@ -1572,18 +1607,6 @@
             document.getElementById('gross-assets-label' + suffix).innerHTML = 'Assets: ' + window.fmtMoney(totalGrossAssets, cur);
             document.getElementById('liabilities-label' + suffix).innerHTML = 'Liabilities: ' + window.fmtMoney(liabilitiesTotal, cur);
 
-            const barDatasets = labels.map((lbl, idx) => {
-                return {
-                    label: lbl,
-                    data: [data[idx]],
-                    backgroundColor: colors[idx],
-                    borderWidth: 0,
-                    borderRadius: idx === 0 ? { topLeft: 12, bottomLeft: 12 } : (idx === labels.length - 1 ? { topRight: 12, bottomRight: 12 } : 0),
-                    barPercentage: 1.0,
-                    categoryPercentage: 1.0
-                };
-            });
-
             if (isModal) {
                 if (window.allocationChartInstanceModal) window.allocationChartInstanceModal.destroy();
             } else {
@@ -1591,37 +1614,37 @@
             }
 
             const chartInstance = new Chart(ctx, {
-                type: 'bar',
+                type: 'doughnut',
                 data: {
-                    labels: ['Allocation'],
-                    datasets: barDatasets
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
                 },
                 options: {
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
+                    cutout: '70%',
                     plugins: {
-                        legend: { position: 'bottom', labels: { font: { family: "'Plus Jakarta Sans'", size: 10, weight: 'bold' }, usePointStyle: true } },
+                        legend: { position: 'right', labels: { font: { family: "'Plus Jakarta Sans'", size: 10, weight: 'bold' }, usePointStyle: true, padding: 20 } },
                         tooltip: {
                             callbacks: {
                                 label: function (context) {
                                     const value = context.raw;
-                                    const total = totalGrossAssets;
-                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                                    const percentage = totalGrossAssets > 0 ? ((value / totalGrossAssets) * 100).toFixed(1) + '%' : '0%';
                                     const fmtVal = new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(value);
-                                    return ' ' + context.dataset.label + ': ' + fmtVal + ' (' + percentage + ')';
+                                    return ' ' + context.label + ': ' + fmtVal + ' (' + percentage + ')';
                                 }
                             }
                         }
                     },
-                    scales: {
-                        x: { stacked: true, display: false },
-                        y: { stacked: true, display: false }
-                    },
                     onClick: (event, elements, chart) => {
                         if (elements.length > 0) {
-                            const datasetIndex = elements[0].datasetIndex;
-                            const label = chart.data.datasets[datasetIndex].label;
+                            const datasetIndex = elements[0].index;
+                            const label = chart.data.labels[datasetIndex];
                             window.showCategoryDetails(label, dataGroups[label], suffix);
                         }
                     }
@@ -1903,6 +1926,8 @@
                     const data = items.map(a => a.balance);
                     const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#6366f1', '#8b5cf6', '#14b8a6'];
 
+                    let existingChart = Chart.getChart(ctx);
+                    if (existingChart) existingChart.destroy();
                     new Chart(ctx, {
                         type: 'doughnut',
                         data: {
@@ -2405,7 +2430,7 @@
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(16);
                 doc.setFont("helvetica", "bold");
-                doc.text("Finshaanire Vault", 14, 20);
+                doc.text("FI SHAANIRE Vault", 14, 20);
                 
                 doc.setTextColor(16, 185, 129); // emerald-500
                 doc.setFontSize(10);
@@ -2442,7 +2467,7 @@
                     columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } }
                 });
                 
-                doc.save(`Finshaanire_Query_${new Date().toISOString().split('T')[0]}.pdf`);
+                doc.save(`FI_SHAANIRE_Query_${new Date().toISOString().split('T')[0]}.pdf`);
                 window.showToast("Query Exported to PDF", "success");
             } catch (err) {
                 console.error("PDF Export Error", err);
@@ -2492,7 +2517,7 @@
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(32);
                 doc.setFont("helvetica", "bold");
-                doc.text("FINSHAANIRE", 20, 120);
+                doc.text("FI SHAANIRE", 20, 120);
                 
                 doc.setTextColor(16, 185, 129);
                 doc.setFontSize(18);
@@ -2504,7 +2529,7 @@
                 const cycleText = `Reporting Cycle: ${lastYear.toISOString().split('T')[0]} to ${today.toISOString().split('T')[0]}`;
                 doc.text(cycleText, 20, 150);
                 
-                doc.text("Generated securely by the Finshaanire Wealth Engine.", 20, 280);
+                doc.text("Generated securely by the FI SHAANIRE Wealth Engine.", 20, 280);
                 
                 // PAGE 2: AI Summary
                 doc.addPage();
@@ -2606,7 +2631,7 @@
                     columnStyles: { 3: { halign: 'right' } }
                 });
                 
-                doc.save(`Finshaanire_AnnualReport_${new Date().getFullYear()}.pdf`);
+                doc.save(`FI_SHAANIRE_AnnualReport_${new Date().getFullYear()}.pdf`);
                 window.showToast("Annual Report Generated Successfully", "success");
             } catch (err) {
                 console.error("PDF Generate Error", err);
@@ -2814,41 +2839,19 @@
 
                                 <!-- Commodity -->
                                 <div id="inp-commodity" class="hidden space-y-4">
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Weight (Grams)</label>
-                                            <input type="number" id="aw" class="w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900" placeholder="0.00">
-                                        </div>
-                                        <div>
-                                            <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Type</label>
-                                            <select id="commodity-type" class="w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs">
-                                                <option value="Gold">Gold</option>
-                                                <option value="Silver">Silver</option>
-                                                <option value="Platinum">Platinum</option>
-                                                <option value="Palladium">Palladium</option>
-                                                <option value="Oil">Oil</option>
-                                                <option value="Diamond">Diamond</option>
-                                            </select>
-                                        </div>
-                                    </div>
                                     <div>
-                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Original Cost (<span id="cost-currency">AED</span>)</label>
-                                        <input type="number" id="original-cost" class="w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900" placeholder="Total amount invested (e.g. 750)">
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Metal Type</label>
+                                        <select id="commodity-type" class="w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs">
+                                            <option value="Gold">Gold</option>
+                                            <option value="Silver">Silver</option>
+                                            <option value="Oil">Oil</option>
+                                            <option value="Diamond">Diamond</option>
+                                        </select>
                                     </div>
                                 </div>
 
                                 <!-- Mutual Fund -->
                                 <div id="inp-fund" class="hidden space-y-4">
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Scheme Code</label>
-                                            <input type="text" id="asc" class="w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-mono" placeholder="123456">
-                                        </div>
-                                        <div>
-                                            <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Units (Nav)</label>
-                                            <input type="number" id="au" class="w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900" placeholder="0.00">
-                                        </div>
-                                    </div>
                                     <input type="text" id="mf-cat" class="w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs" placeholder="Category (e.g. Small Cap)">
                                 </div>
 
@@ -2880,24 +2883,7 @@
                             <button id="btn-save-acc" onclick="window.saveAccount()" class="w-full bg-emerald-500 text-white p-5 rounded-3xl font-black uppercase text-sm shadow-xl hover:bg-emerald-600 transition-all">Save Account</button>
                         </div>`; break;
 
-                case 'sinking-add':
-                    t.innerText = 'New Sinking Fund';
-                    c.innerHTML = `
-                        <div class="max-w-sm mx-auto bg-slate-50 p-8 rounded-[2.5rem] border text-center">
-                            <i data-lucide="piggy-bank" class="w-12 h-12 text-indigo-500 mx-auto mb-4"></i>
-                            <div class="space-y-4">
-                                <input type="text" id="sf-name" placeholder="Fund Name (e.g. Annual Insurance)" class="w-full p-4 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500">
-                                <select id="sf-currency" class="w-full p-4 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500">
-                                    <option value="AED">AED</option>
-                                    <option value="INR">INR</option>
-                                </select>
-                                <input type="number" id="sf-target" placeholder="Target Amount" class="w-full p-4 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500">
-                                <label class="block text-left text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Target Date</label>
-                                <input type="date" id="sf-date" class="w-full p-4 border rounded-xl font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500">
-                            </div>
-                            <button onclick="window.saveSinkingFund()" class="w-full bg-indigo-600 text-white p-4 rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-indigo-700 transition-all mt-6">Add Sinking Fund</button>
-                        </div>
-                    `; break;
+
                 case 'transaction': t.innerText = 'Data Movement'; c.innerHTML = `
                     <div class="max-w-md mx-auto bg-white p-10 rounded-[3rem] border shadow-xl text-center">
                         <div class="grid grid-cols-2 gap-4 mb-6 text-center">
@@ -2905,7 +2891,7 @@
                             <button id="bi" onclick="window.setT('income')" class="p-4 rounded-xl border-4 border-slate-100 text-slate-300 font-black text-xs uppercase">Income</button>
                         </div>
                         <input type="hidden" id="tt" value="expense">
-                        <select id="ta" class="w-full p-4 border rounded-xl font-bold mb-4 text-center">${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
+                        <select id="ta" class="w-full p-4 border rounded-xl font-bold mb-4 text-center">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
                         <div class="grid grid-cols-2 gap-4 mb-4 text-center">
                             <select id="tc" class="p-4 border rounded-xl font-bold text-sm text-center">${state.data.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}</select>
                             <input type="number" id="tam" placeholder="0.00" class="p-4 border rounded-xl font-black text-center focus:border-emerald-500">
@@ -2931,30 +2917,7 @@
                             </div>
                         </div>
 
-                        <!-- ASSET SELL UI -->
-                        <div id="asset-sell-area" class="hidden bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100">
-                             <p class="text-[9px] font-black uppercase text-slate-400 mb-2">Asset Liquidation Details</p>
-                             <div class="grid grid-cols-2 gap-4">
-                                  <div>
-                                     <label id="lbl-sell-qty" class="text-[9px] font-bold text-slate-400 block mb-1">Units/Grams</label>
-                                     <input type="number" id="sell-qty" oninput="window.calcSellTotal()" class="w-full p-3 border rounded-xl font-bold text-center text-slate-900 outline-none focus:border-emerald-500" placeholder="0.00">
-                                 </div>
-                                 <div>
-                                     <label id="lbl-sell-rate" class="text-[9px] font-bold text-slate-400 block mb-1">Rate/NAV</label>
-                                     <input type="number" id="sell-rate" oninput="window.calcSellTotal()" class="w-full p-3 border rounded-xl font-bold text-center text-slate-900 outline-none focus:border-emerald-500" placeholder="0.00">
-                                 </div>
-                             </div>
-                        </div>
-                        
-                        <!-- ASSET BUY UI -->
-                        <div id="asset-buy-area" class="hidden bg-emerald-50 p-4 rounded-2xl mb-4 border border-emerald-100">
-                             <p class="text-[9px] font-black text-emerald-600 uppercase mb-2">Purchase Rate Override</p>
-                             <div class="flex items-center space-x-2">
-                                 <label id="lbl-buy-rate" class="text-[9px] font-bold text-emerald-700 w-1/3 text-left">Current Rate</label>
-                                 <input type="number" id="buy-rate" class="w-2/3 p-3 border rounded-xl font-bold text-center text-emerald-900 outline-none bg-white focus:ring-2 focus:ring-emerald-500" placeholder="Auto (Live Rate)">
-                             </div>
-                             <p class="text-[8px] text-emerald-600/70 mt-2 font-bold leading-tight">Leave blank to use the live global rate, or enter the exact purchase rate on your receipt.</p>
-                        </div>
+                        <!-- ASSET TRADE UI REMOVED FOR COST-BASIS ONLY MODE -->
 
                         <input type="number" id="tamt" oninput="window.calcRemit(this.value)" class="w-full p-6 border-2 rounded-2xl font-black text-3xl text-center mb-4 text-center outline-none focus:border-emerald-500" placeholder="Sending Amount">
                         <div id="remit-preview" class="text-xs font-black text-emerald-600 mb-6 h-4 text-center"></div>
@@ -2967,47 +2930,18 @@
                 case 'settings': t.innerText = 'Configuration Hub'; c.innerHTML = window.renderSettingsUI(); break;
                 case 'reports': t.innerText = 'Summaries'; c.innerHTML = window.renderDistributionInsights(); break;
                 case 'analytics': t.innerText = 'Financial Health Board'; window.renderDashboard(); break;
-                case 'budget': t.innerText = 'Monthly Budgeting'; c.innerHTML = window.renderBudgetUI(); break;
-                case 'performance': t.innerText = 'Portfolio Growth'; c.innerHTML = window.renderPerformance(); break;
-                // Goals removed
+                case 'budget': t.innerText = 'Monthly Budgeting'; c.innerHTML = window.renderBudgetUI(); setTimeout(window.recalculateBalances, 50); break;
+
+                case 'goals': t.innerText = 'My Goals (Sinking Funds)'; c.innerHTML = window.renderGoalsUI(); break;
+                case 'tags': t.innerText = 'Projects & Tag Analytics'; c.innerHTML = window.renderTagsUI(); break;
                 case 'calculator': t.innerText = 'Compound Projector'; c.innerHTML = window.renderCalculator(); break;
                 case 'subscriptions': t.innerText = 'Recurring Auto-Pay'; c.innerHTML = window.renderSubscriptionsUI(); break;
                 case 'import': t.innerText = 'Import Statement'; c.innerHTML = window.renderImportUI(); break;
                 // NEW FEATURES
                 case 'remittance': t.innerText = 'Arbitrage Tracker'; c.innerHTML = window.renderRemittance(); setTimeout(window.renderRemitChart, 300); break;
                 case 'zakat': t.innerText = 'Zakat Calculator'; c.innerHTML = window.renderZakatCalculator(); break;
-                case 'allocation':
-                    t.innerText = 'Robot Strategy';
-                    const targets = state.data.allocationTargets || { 'Equity': 50, 'Gold': 20, 'Cash': 30, 'Real Estate': 0 };
-                    c.innerHTML = `
-                        <div class="max-w-md mx-auto bg-white p-8 rounded-[3rem] border shadow-xl text-center space-y-6">
-                            <p class="text-sm text-slate-500 font-bold">Define your ideal portfolio mix.</p>
-                            
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Equity (Stocks/MF)</label>
-                                    <input type="number" id="alloc-equity" value="${targets['Equity']}" class="w-full p-4 border rounded-xl font-black text-center text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0">
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Gold (Commodities)</label>
-                                    <input type="number" id="alloc-gold" value="${targets['Gold']}" class="w-full p-4 border rounded-xl font-black text-center text-amber-500 outline-none focus:ring-2 focus:ring-amber-500" placeholder="0">
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Cash (Bank/Savings)</label>
-                                    <input type="number" id="alloc-cash" value="${targets['Cash']}" class="w-full p-4 border rounded-xl font-black text-center text-blue-500 outline-none focus:ring-2 focus:ring-blue-500" placeholder="0">
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">Real Estate</label>
-                                    <input type="number" id="alloc-re" value="${targets['Real Estate']}" class="w-full p-4 border rounded-xl font-black text-center text-indigo-500 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0">
-                                </div>
-                            </div>
-                            
-                            <button onclick="window.saveAllocationTargetsFromModal()" class="w-full bg-slate-900 text-white p-5 rounded-2xl font-black uppercase shadow-xl hover:bg-emerald-600 transition-all">
-                                Update Strategy
-                            </button>
-                        </div>
-                    `;
-                    break;
+                case 'zakat_payment': t.innerText = 'Record Zakat Payment'; c.innerHTML = window.renderZakatPaymentModal(); break;
+
 
                 case 'sweep':
                     t.innerText = 'Budget Sweep';
@@ -3048,262 +2982,6 @@
             lucide.createIcons();
         };
 
-        window.editAllocationTargets = function () {
-            window.openModal('allocation');
-        };
-
-        window.saveAllocationTargetsFromModal = async function () {
-            const eq = parseFloat(document.getElementById('alloc-equity').value) || 0;
-            const gold = parseFloat(document.getElementById('alloc-gold').value) || 0;
-            const cash = parseFloat(document.getElementById('alloc-cash').value) || 0;
-            const re = parseFloat(document.getElementById('alloc-re').value) || 0;
-
-            const total = eq + gold + cash + re;
-            if (Math.abs(total - 100) > 1) {
-                alert(`⚠️ Total must be 100%. Currently: ${total}%`);
-                return;
-            }
-
-            state.data.allocationTargets = { 'Equity': eq, 'Gold': gold, 'Cash': cash, 'Real Estate': re };
-            await updateDb();
-            window.closeModal();
-            window.renderApp(); // Re-render to update the robot view
-        };
-
-        window.renderPerformance = function () {
-            let totalInvested = 0;
-            let totalCurrent = 0;
-            let assetPerformance = [];
-
-            // 1. Process Assets
-            const rows = state.data.accounts.filter(a => ['Investment', 'Mutual Fund', 'Commodity'].includes(a.type)).map(acc => {
-                const txs = state.data.transactions.filter(t => t.accountId === acc.id);
-                // Find Start Date (First Transfer In)
-                const firstTx = txs.filter(t => t.type === 'transfer_in').sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-                const startDate = firstTx ? new Date(firstTx.date) : new Date();
-                const daysHeld = Math.max(1, (new Date() - startDate) / (1000 * 60 * 60 * 24));
-                const yearsHeld = daysHeld / 365;
-
-                const transfersIn = txs.filter(t => t.type === 'transfer_in').reduce((s, t) => s + parseFloat(t.amount), 0);
-                const transfersOut = txs.filter(t => t.type === 'transfer_out').reduce((s, t) => s + parseFloat(t.amount), 0);
-
-                // Unified Investment Calculation: Initial Cost + Net Transfers
-                const netTransfers = transfersIn - transfersOut;
-                let invested;
-
-                if (acc.originalCost !== undefined) {
-                    invested = acc.originalCost + netTransfers;
-                } else {
-                    invested = Math.max(0, netTransfers);
-                }
-
-                const curVal = acc.currency === 'AED' ? acc.balance * state.data.settings.rate : acc.balance;
-                const invVal = acc.currency === 'AED' ? invested * state.data.settings.rate : invested;
-
-                totalInvested += invVal;
-                totalCurrent += curVal;
-
-                const gain = curVal - invVal;
-                const gainP = invVal > 0 ? (gain / invVal * 100) : 0;
-
-                // CAGR Calc
-                let cagr = 0;
-                if (invVal > 0 && curVal > 0 && yearsHeld >= 1) {
-                    cagr = (Math.pow(curVal / invVal, 1 / yearsHeld) - 1) * 100;
-                } else if (yearsHeld < 1) {
-                    cagr = gainP; // Show absolute return for <1 year
-                }
-
-                assetPerformance.push({ name: acc.name, gain: gain, gainP: gainP, cagr: cagr, years: yearsHeld, symbol: acc.subtype === 'Gold' ? '🥇' : '📈' });
-
-                const isSlug = cagr < 6; // Inflation benchmark
-                const badge = yearsHeld >= 1
-                    ? `<span class="px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${cagr > 12 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${cagr > 20 ? '🚀' : (isSlug ? '🐢' : '📈')} ${cagr.toFixed(1)}% p.a.</span>`
-                    : `<span class="px-2 py-0.5 rounded-md text-[8px] font-black uppercase bg-slate-50 text-slate-400">New (${daysHeld.toFixed(0)}d)</span>`;
-
-                return `<div class="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border mb-2 text-[10px]">
-                    <div class="text-left font-bold w-1/3">
-                        <div class="truncate">${acc.name}</div>
-                        ${badge}
-                    </div>
-                    <div class="text-right w-1/3 text-slate-400 num-font leading-none">₹${Math.round(invVal).toLocaleString()}</div>
-                    <div class="text-right w-1/3 font-black ${gain >= 0 ? 'text-emerald-500' : 'text-red-500'} num-font leading-none">
-                        ₹${Math.round(curVal).toLocaleString()} <span class="text-[8px] opacity-70 font-sans tracking-normal">(${gainP.toFixed(1)}%)</span>
-                    </div>
-                </div>`;
-            }).join('');
-
-            const netGain = totalCurrent - totalInvested;
-
-            // --- REBALANCING ROBOT LOGIC ---
-            // 1. Calc Current Allocation
-            let allocIds = { 'Equity': 0, 'Gold': 0, 'Cash': 0, 'Real Estate': 0 };
-            state.data.accounts.forEach(a => {
-                const val = a.currency === 'AED' ? a.balance * state.data.settings.rate : a.balance;
-                if (a.type === 'Mutual Fund' || a.type === 'Investment') allocIds['Equity'] += val;
-                else if (a.type === 'Commodity' && a.subtype === 'Gold') allocIds['Gold'] += val;
-                else if (['Bank Account', 'Cash', 'Savings'].includes(a.type)) allocIds['Cash'] += val;
-                else if (a.type === 'Real Estate') allocIds['Real Estate'] += val;
-            });
-
-            const totalPortfolioValue = Object.values(allocIds).reduce((a, b) => a + b, 0);
-            const targets = state.data.allocationTargets || { 'Equity': 50, 'Gold': 20, 'Cash': 30, 'Real Estate': 0 };
-
-            // 2. Generate Actions
-            let actions = [];
-            Object.keys(targets).forEach(key => {
-                const targetPct = targets[key];
-                const currentVal = allocIds[key];
-                const targetVal = totalPortfolioValue * (targetPct / 100);
-                const diff = targetVal - currentVal;
-
-                // Threshold: Only suggest action if deviation> 5% of target or> 1000 AED
-                if (Math.abs(diff) > 1000) {
-                    const action = diff > 0 ? 'Buy' : 'Sell';
-                    actions.push({ asset: key, action, amount: Math.abs(diff) });
-                }
-            });
-
-            // 2. Determine MVP & Anchor
-            assetPerformance.sort((a, b) => b.gainP - a.gainP);
-            const mvp = assetPerformance.length > 0 ? assetPerformance[0] : null;
-            const anchor = assetPerformance.length > 0 ? assetPerformance[assetPerformance.length - 1] : null;
-
-            // 3. Render
-            setTimeout(() => {
-                const ctx = document.getElementById('chart-profit-wedge');
-                if (ctx && totalInvested > 0) {
-                    // Generate Trend Data for Wedge
-                    // Since we lack daily history, we simulate:
-                    // Invested Line: Linear ramp from 0 to Total Invested? No, let's look at transactions?
-                    // Too complex for JS-only right now.
-                    // Approximation: 
-                    // P1: Start Date (Invested=0, Val=0)
-                    // P2: End Date (Invested=TotalInvested, Val=TotalCurrent)
-                    // Fill the middle
-
-                    const labels = Array.from({ length: 12 }, (_, i) => `T-${11 - i}M`);
-                    // Create a "Smooth" curve for Value and a "Stepped" curve for Invested (simulating SIPs)
-                    const dataInvested = labels.map((_, i) => totalInvested * ((i + 1) / 12)); // Linear accumulation assumption
-                    // Value assumes compounding curve
-                    const r = totalCurrent / totalInvested; // Total Multiple
-                    const dataValue = labels.map((_, i) => totalInvested * ((i + 1) / 12) * (1 + ((r - 1) * (i / 11)))); // Expanding alpha
-
-                    new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                {
-                                    label: 'Market Value',
-                                    data: dataValue,
-                                    borderColor: '#10b981', // Emerald
-                                    backgroundColor: 'rgba(16, 185, 129, 0.2)', // Green Mist
-                                    fill: true,
-                                    tension: 0.4,
-                                    pointRadius: 0
-                                },
-                                {
-                                    label: 'Invested Capital',
-                                    data: dataInvested,
-                                    borderColor: '#94a3b8', // Slate 400
-                                    backgroundColor: 'rgba(148, 163, 184, 0.1)', // Grey Mist
-                                    fill: true,
-                                    tension: 0.4,
-                                    pointRadius: 0
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true, maintainAspectRatio: false,
-                            plugins: { legend: { display: false } }, // Minimal
-                            scales: { x: { display: false }, y: { display: false } },
-                            elements: { point: { radius: 0 } }
-                        }
-                    });
-                }
-            }, 500);
-
-            return `<div class="max-w-xl mx-auto space-y-6 text-center">
-                
-                <!-- 0. REBALANCING ROBOT -->
-                 <div class="bg-indigo-900 text-white p-6 rounded-[2.5rem] shadow-xl relative overflow-hidden text-left mb-6">
-                    <div class="flex justify-between items-center mb-4 relative z-10">
-                         <h4 class="text-[10px] font-black uppercase text-indigo-300 tracking-widest flex items-center gap-2">
-                            <i data-lucide="bot" class="w-4 h-4"></i> Rebalancing Robot
-                        </h4>
-                        <button onclick="window.editAllocationTargets()" class="bg-indigo-800 p-2 rounded-full hover:bg-indigo-700 text-[10px] font-bold uppercase transition-colors">
-                            Set Targets
-                        </button>
-                    </div>
-                    
-                    <div class="relative z-10">
-                         ${actions.length === 0 ?
-                    `<div class="text-center py-4"><p class="text-emerald-400 font-bold text-sm">Balanced ✅</p><p class="text-[9px] text-indigo-400">Your portfolio matches your targets.</p></div>` :
-                    `<div class="space-y-2">
-                                ${actions.map(a => `
-                                <div class="flex justify-between items-center bg-indigo-950/50 p-3 rounded-xl border border-indigo-800/50">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-2 h-2 rounded-full ${a.action === 'Buy' ? 'bg-emerald-500' : 'bg-red-500'}"></div>
-                                        <p class="font-bold text-xs text-indigo-100">${a.action} ${a.asset}</p>
-                                    </div>
-                                    <p class="font-black text-xs text-indigo-200 num-font">${a.action === 'Buy' ? '+' : '-'} ₹${Math.round(a.amount).toLocaleString()}</p>
-                                </div>
-                                `).join('')}
-                            </div>`
-                }
-                    </div>
-                 </div>
-                
-                <!-- 1. HIGHLIGHTS Card (MVP & Anchor) -->
-                ${mvp ? `<div class="grid grid-cols-2 gap-4">
-                    <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white p-4 rounded-[2rem] shadow-lg relative overflow-hidden">
-                        <div class="relative z-10 text-left">
-                            <p class="text-[9px] uppercase font-black text-emerald-200 tracking-widest mb-1">MVP 🏆</p>
-                            <p class="font-bold text-sm truncate">${mvp.name}</p>
-                            <p class="text-2xl font-black mt-1 num-font">+${mvp.gainP.toFixed(1)}%</p>
-                        </div>
-                        <i data-lucide="trending-up" class="absolute -bottom-2 -right-2 text-white/20 w-16 h-16"></i>
-                    </div>
-                     <div class="bg-slate-800 text-white p-4 rounded-[2rem] shadow-lg relative overflow-hidden">
-                        <div class="relative z-10 text-left">
-                            <p class="text-[9px] uppercase font-black text-slate-400 tracking-widest mb-1">Anchor ${anchor.gainP < 0 ? '⚓' : '💤'}</p>
-                            <p class="font-bold text-sm truncate text-slate-300">${anchor.name}</p>
-                            <p class="text-2xl font-black mt-1 num-font ${anchor.gainP < 0 ? 'text-red-400' : 'text-slate-400'}">${anchor.gainP > 0 ? '+' : ''}${anchor.gainP.toFixed(1)}%</p>
-                        </div>
-                        <i data-lucide="anchor" class="absolute -bottom-2 -right-2 text-white/10 w-16 h-16"></i>
-                    </div>
-                </div>` : ''}
-
-                <!-- 2. PROFIT WEDGE CHART (Visual Alpha) -->
-                <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm relative overflow-hidden">
-                    <div class="flex justify-between items-end mb-4 relative z-10 text-left">
-                         <div>
-                            <p class="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1">Net Alpha (Profit)</p>
-                            <h3 class="text-4xl font-black ${netGain >= 0 ? 'text-emerald-500' : 'text-red-500'} num-font">${netGain >= 0 ? '+' : ''}₹${Math.round(netGain).toLocaleString()}</h3>
-                         </div>
-                         <div class="text-right">
-                             <div class="flex items-center gap-2 justify-end mb-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-[9px] font-bold text-slate-500">Value</span></div>
-                             <div class="flex items-center gap-2 justify-end"><span class="w-2 h-2 rounded-full bg-slate-300"></span><span class="text-[9px] font-bold text-slate-500">Cost</span></div>
-                         </div>
-                    </div>
-                    <div class="h-48 w-full relative z-10">
-                        <canvas id="chart-profit-wedge"></canvas>
-                    </div>
-                     <div class="grid grid-cols-2 gap-4 mt-4 relative z-10">
-                        <div class="bg-slate-50 rounded-xl p-3"><p class="text-[8px] text-slate-400 uppercase font-black">Invested</p><p class="font-bold text-sm num-font">₹${Math.round(totalInvested).toLocaleString()}</p></div>
-                        <div class="bg-emerald-50 rounded-xl p-3"><p class="text-[8px] text-emerald-600 uppercase font-black">Current</p><p class="font-bold text-sm text-emerald-700 num-font">₹${Math.round(totalCurrent).toLocaleString()}</p></div>
-                    </div>
-                </div>
-
-                <!-- 3. HOLDINGS LIST -->
-                <div class="bg-white rounded-[2rem] border p-6">
-                    <h4 class="text-xs font-black uppercase text-slate-400 tracking-widest mb-4 text-left px-2">Portfolio Performance</h4>
-                    ${rows || '<p class="text-slate-300 italic">No investments found</p>'}
-                </div>
-            </div>`;
-        };
-
         // renderGoalsUI function removed
 
         window.renderZakatCalculator = function () {
@@ -3342,10 +3020,10 @@
             const netZakatable = Math.max(0, qualifying - liabilities);
             const zakatDue = netZakatable * 0.025; // 2.5%
 
-            // Nisab Check (Approx 85g Gold ~ 600,000 INR approx? Need manual input or static threshold)
-            // Let's assume Nisab is roughly 500k INR for now to trigger display
-            const nisab = 600000;
-            const isEligible = netZakatable > nisab;
+            // Nisab Check (Silver Standard: 595 grams of pure Silver)
+            const silverRate = (state.data.commodityRates && state.data.commodityRates.Silver) ? state.data.commodityRates.Silver : 90;
+            const nisab = silverRate * 595;
+            const isEligible = netZakatable >= nisab;
 
             // BNPL Calculation (assuming this is a separate section within the same UI)
             const totalIncome = state.data.transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
@@ -3353,6 +3031,9 @@
             const freeCash = totalIncome - totalExpenses;
             const discretionary = Math.max(0, freeCash - (state.data.fixedCategories || []).reduce((sum, cat) => sum + ((state.data.budgets && state.data.budgets[cat]) || 0), 0));
             const availableCapacity = discretionary * 0.20; // 20% of discretionary income for BNPL
+
+            // Save zakatDue globally for the payment modal
+            window.currentZakatDue = zakatDue;
 
             return `<div class="max-w-xl mx-auto space-y-8 text-center">
                  <div class="bg-slate-900 text-white p-8 rounded-[3rem] shadow-xl relative overflow-hidden">
@@ -3384,17 +3065,128 @@
                             <span>Less: Immediate Debts</span>
                              <span class="num-font">- ₹${Math.round(liabilities).toLocaleString()}</span>
                         </div>
-                        <div class="flex justify-between items-center px-3 text-lg font-black text-slate-900 pt-2">
+                        <div class="flex justify-between items-center px-3 text-lg font-black text-slate-900 pt-2 border-b border-slate-100 pb-2">
                             <span>Net Zakatable Wealth</span>
                              <span class="num-font">₹${Math.round(netZakatable).toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between items-center px-3 text-slate-500 text-xs pt-1">
+                            <span>Nisab Threshold (Silver: 595g @ ₹${silverRate}/g)</span>
+                             <span class="num-font">₹${Math.round(nisab).toLocaleString()}</span>
                         </div>
                      </div>
                 </div>
 
-                <button onclick="alert('Feature to auto-debit coming soon!')" class="w-full bg-emerald-500 text-white p-5 rounded-3xl font-black uppercase shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2">
+                <button onclick="window.initZakatPaymentFlow()" class="w-full bg-emerald-500 text-white p-5 rounded-3xl font-black uppercase shadow-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2">
                     <i data-lucide="check-circle" class="w-5 h-5"></i> Record Zakat Payment
                 </button>
             </div>`;
+        };
+
+        window.renderZakatPaymentModal = function () {
+            const zakatAmount = window.currentZakatDue ? Math.round(window.currentZakatDue) : 0;
+            const validAccounts = state.data.accounts.filter(a => ['Bank Account', 'Cash'].includes(a.type));
+            
+            let accountOptions = validAccounts.map(a => `<option value="${a.id}">${a.name} (${a.currency} ${a.balance.toLocaleString()})</option>`).join('');
+
+            return `<div class="max-w-md mx-auto bg-white p-8 rounded-[2.5rem] text-left space-y-6">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-500">
+                        <i data-lucide="heart-handshake" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-2xl font-black text-slate-900 mb-1">Pay Zakat</h3>
+                    <p class="text-sm text-slate-500 font-medium">Fulfill your obligation accurately.</p>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Payment Amount (INR Base)</label>
+                        <input type="number" id="zakat-pay-amount" value="${zakatAmount}" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-lg focus:ring-2 focus:ring-emerald-500 outline-none transition-all num-font">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Pay From Account</label>
+                        <select id="zakat-pay-account" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold">
+                            ${accountOptions}
+                        </select>
+                    </div>
+                </div>
+
+                <button id="btn-process-zakat" onclick="window.processZakatPayment()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-emerald-600 transition-all shadow-lg flex items-center justify-center space-x-2">
+                    <span id="btn-process-zakat-text">Confirm Payment</span>
+                </button>
+            </div>`;
+        };
+
+        window.processZakatPayment = async function () {
+            const amt = parseFloat(document.getElementById('zakat-pay-amount').value);
+            const accId = document.getElementById('zakat-pay-account').value;
+
+            if (!amt || amt <= 0 || !accId) {
+                window.showToast("Please enter a valid amount and select an account.", "error");
+                return;
+            }
+
+            const acc = state.data.accounts.find(a => a.id === accId);
+            if (!acc) return;
+
+            // Convert INR base amount to account's currency
+            const r = state.data.settings.rate;
+            let finalDeduction = amt;
+            if (acc.currency === 'AED') {
+                finalDeduction = amt / r;
+            }
+
+            if (acc.balance < finalDeduction) {
+                window.showToast("Insufficient funds in selected account.", "error");
+                return;
+            }
+
+            window.setBtnLoading('btn-process-zakat', true);
+
+            // Deduct from account
+            acc.balance -= finalDeduction;
+
+            // Create Transaction
+            const newTx = {
+                id: window.genId(),
+                accountId: accId,
+                type: 'expense',
+                amount: finalDeduction,
+                currency: acc.currency,
+                category: 'Zakat',
+                date: new Date().toISOString().split('T')[0],
+                note: 'Annual Zakat Payment',
+                timestamp: Date.now()
+            };
+
+            state.data.transactions.push(newTx);
+            
+            await window.updateDb();
+            window.showToast("Zakat payment recorded successfully! May Allah accept it.", "success");
+            window.closeModal();
+            window.renderDashboard(true);
+        };
+
+        window.initZakatPaymentFlow = function () {
+            const currentRate = (state.data.commodityRates && state.data.commodityRates.Silver) ? state.data.commodityRates.Silver : 90;
+            window.showPrompt('Confirm Silver Rate', `Enter current silver market rate (INR/gram). Current stored rate is ₹${currentRate}.`, async (val) => {
+                const rate = parseFloat(val);
+                if (isNaN(rate) || rate <= 0) {
+                    window.showToast("Invalid rate entered.", "error");
+                    return;
+                }
+                
+                if (!state.data.commodityRates) state.data.commodityRates = {};
+                state.data.commodityRates.Silver = rate;
+                
+                // Recalculate implicitly by running render function (updates global window.currentZakatDue)
+                window.renderZakatCalculator();
+                
+                // Persist new rate
+                await window.updateDb();
+                
+                // Open payment modal
+                window.openModal('zakat_payment');
+            }, 'number');
         };
 
         // createGoal, contribGoal, deleteGoal removed
@@ -3615,13 +3407,12 @@
 
         window.checkSubscriptions = async function () {
             if (!state.data.subscriptions) return;
-            let changed = false;
+            let executedLogs = [];
             const today = new Date();
 
             for (let sub of state.data.subscriptions) {
                 const due = new Date(sub.nextDate);
                 if (today >= due) {
-
                     if (sub.type === 'transfer') {
                         // --- TRANSFER LOGIC ---
                         const srcIdx = state.data.accounts.findIndex(a => a.id === sub.accountId);
@@ -3632,32 +3423,23 @@
                             const srcAcc = state.data.accounts[srcIdx];
                             const tgtAcc = state.data.accounts[tgtIdx];
 
-                            // 1. Deduct from Source
-                            state.data.accounts[srcIdx].balance = window.toCurrency(state.data.accounts[srcIdx].balance - amt);
-
-                            // 2. Add to Target (Simple 1:1 if same currency, else approximate or skip conv for MVP auto-run)
-                            // Ideally reusing window.doTransfer logic but that's async and UI bound.
-                            // For Auto-run, we'll assume 1:1 if same currency, otherwise use global rate if available
+                            // 1. Transactions (No manual balance math, recalculateBalances does it)
+                            const dateIso = new Date().toISOString();
+                            state.data.transactions.push({
+                                id: window.genId(), accountId: sub.accountId, amount: window.toCurrency(amt), type: 'transfer_out', category: 'Auto-Transfer', note: `To ${tgtAcc.name}: ${sub.name}`, date: dateIso
+                            });
+                            
                             let finalAmt = amt;
                             if (srcAcc.currency !== tgtAcc.currency) {
                                 const rate = state.data.settings.rate;
                                 if (srcAcc.currency === 'AED' && tgtAcc.currency === 'INR') finalAmt = amt * rate;
                                 else if (srcAcc.currency === 'INR' && tgtAcc.currency === 'AED') finalAmt = amt / rate;
                             }
-
-                            state.data.accounts[tgtIdx].balance = window.toCurrency(state.data.accounts[tgtIdx].balance + finalAmt);
-
-                            // 3. Transactions
-                            const dateIso = new Date().toISOString();
                             state.data.transactions.push({
-                                id: window.genId(), accountId: sub.accountId, amount: window.toCurrency(amt), type: 'transfer_out', category: 'Auto-Transfer', note: `To ${tgtAcc.name}: ${sub.name} `, date: dateIso
-                            });
-                            state.data.transactions.push({
-                                id: window.genId(), accountId: sub.targetAccountId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: 'Auto-Transfer', note: `From ${srcAcc.name}: ${sub.name} `, date: dateIso
+                                id: window.genId(), accountId: sub.targetAccountId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: 'Auto-Transfer', note: `From ${srcAcc.name}: ${sub.name}`, date: dateIso
                             });
 
-                            changed = true;
-                            alert(`🔔 Auto - Transfer Executed: ${sub.name} `);
+                            executedLogs.push(`Moved ${srcAcc.currency} ${amt} for ${sub.name}`);
                         }
 
                     } else {
@@ -3665,33 +3447,253 @@
                         const accIdx = state.data.accounts.findIndex(a => a.id === sub.accountId);
                         if (accIdx > -1) {
                             const amt = parseFloat(sub.amount);
-                            const curBal = parseFloat(state.data.accounts[accIdx].balance);
-                            state.data.accounts[accIdx].balance = window.toCurrency(sub.type === 'income' ? curBal + amt : curBal - amt);
-
+                            const acc = state.data.accounts[accIdx];
+                            
                             state.data.transactions.push({
                                 id: window.genId(),
                                 accountId: sub.accountId,
                                 amount: window.toCurrency(amt),
                                 type: sub.type,
                                 category: sub.category,
-                                note: `Auto - Pay: ${sub.name} `,
+                                note: `Auto-Pay: ${sub.name}`,
                                 date: new Date().toISOString()
                             });
-                            window.showToast(`🔔 Auto - Processed: ${sub.name} `, "info");
+                            executedLogs.push(`${sub.type === 'income' ? 'Deposited' : 'Deducted'} ${acc.currency} ${amt} for ${sub.name}`);
                         }
                     }
 
-                    // Advance Date
+                    // Advance Date by handling frequency (Monthly by default, can be extended later)
                     const next = new Date(due);
                     next.setMonth(next.getMonth() + 1);
                     sub.nextDate = next.toISOString();
-                    changed = true; // Ensure date update saves even if acc not found (border case)
+                    
+                    // Note: even if account not found, we advance the date so it doesn't loop infinitely
                 }
             }
-            if (changed) {
+            if (executedLogs.length > 0) {
                 await updateDb();
+                window.recalculateBalances(); // Essential for Poka-Yoke ledger integrity
+                window.renderApp();
+                
+                // Show Execution Report
+                const b = document.getElementById('modal-backdrop');
+                const t = document.getElementById('modal-title');
+                const c = document.getElementById('modal-content');
+                t.innerText = "Auto-Pilot Report";
+                c.innerHTML = `
+                <div class="max-w-md mx-auto bg-white p-8 rounded-[3rem] text-center space-y-6">
+                    <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                        <i data-lucide="bot" class="w-8 h-8"></i>
+                    </div>
+                    <p class="text-sm font-bold text-slate-500">I processed the following recurring transactions in the background while you were away:</p>
+                    <ul class="text-left space-y-3 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                        ${executedLogs.map(l => `<li class="flex items-center text-xs font-black text-slate-700"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 mr-2"></i> ${l}</li>`).join('')}
+                    </ul>
+                    <button onclick="window.closeModal()" class="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg hover:bg-emerald-500 transition-colors">Acknowledge</button>
+                </div>`;
+                b.classList.replace('hidden', 'flex');
+                lucide.createIcons();
+            }
+        };
+
+        window.renderGoalsUI = function () {
+            if (!state.data.goals) state.data.goals = [];
+            return `
+            <div class="max-w-2xl mx-auto space-y-6 text-left">
+                <div class="grid gap-4 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
+                    ${state.data.goals.map(g => `
+                    <div class="bg-white border border-slate-200 rounded-3xl p-5 flex flex-col md:flex-row justify-between items-center shadow-sm">
+                        <div class="flex items-center space-x-4 mb-4 md:mb-0">
+                            <div class="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center">
+                                <i data-lucide="${g.icon || 'target'}" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-900">${g.name}</h4>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Target: ${window.fmtMoney(g.target, g.currency)} | Saved: ${window.fmtMoney(g.saved, g.currency)}</p>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="window.addGoalFunds('${g.id}')" class="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold uppercase hover:bg-emerald-100">+ Add Funds</button>
+                            <button onclick="window.deleteGoal('${g.id}')" class="px-3 py-2 bg-red-50 text-red-500 rounded-xl text-xs font-bold hover:bg-red-100"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>`).join('') || '<p class="text-center text-slate-400 py-8 font-bold text-xs uppercase tracking-widest">No Active Goals</p>'}
+                </div>
+                
+                <div class="bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100">
+                    <h4 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 ml-2"><i data-lucide="plus" class="w-4 h-4 inline-block -mt-1 mr-1"></i> Create New Goal</h4>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <input type="text" id="g-name" placeholder="Goal Name (e.g. New Car)" class="col-span-2 p-4 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 text-sm font-bold text-center">
+                        <select id="g-currency" class="p-4 border border-slate-200 rounded-2xl outline-none font-bold text-center">
+                            <option value="AED">AED</option>
+                            <option value="INR">INR</option>
+                        </select>
+                        <select id="g-icon" class="p-4 border border-slate-200 rounded-2xl outline-none font-bold text-center text-slate-500">
+                            <option value="target">Target</option>
+                            <option value="car">Car</option>
+                            <option value="home">Home</option>
+                            <option value="plane">Travel</option>
+                            <option value="graduation-cap">Education</option>
+                            <option value="shield-alert">Emergency</option>
+                        </select>
+                        <input type="number" id="g-target" placeholder="Target Amount" class="col-span-2 p-4 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 text-sm font-bold text-center">
+                    </div>
+                    <button onclick="window.saveGoal()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg hover:bg-indigo-500 transition-colors">Create Goal Envelope</button>
+                </div>
+                <button onclick="window.closeModal()" class="w-full text-slate-400 py-3 text-[10px] font-black uppercase tracking-widest hover:text-slate-600 transition-colors">Close Menu</button>
+            </div>`;
+        };
+
+        window.saveGoal = async function () {
+            const name = document.getElementById('g-name').value;
+            const target = document.getElementById('g-target').value;
+            const currency = document.getElementById('g-currency').value;
+            const icon = document.getElementById('g-icon').value;
+
+            if (!name || !target) return window.showToast("Fill required fields", "error");
+
+            if (!state.data.goals) state.data.goals = [];
+            state.data.goals.push({
+                id: window.genId(),
+                name, target: parseFloat(target), saved: 0, currency, icon
+            });
+
+            await updateDb();
+            window.openModal('goals');
+            window.recalculateBalances();
+            window.renderApp();
+            window.showToast("Goal Created", "success");
+        };
+
+        window.deleteGoal = async function (id) {
+            if (confirm("Remove this goal? The funds will simply return to your 'Safe to Spend' limit.")) {
+                state.data.goals = state.data.goals.filter(g => g.id !== id);
+                await updateDb();
+                window.openModal('goals');
+                window.recalculateBalances();
                 window.renderApp();
             }
+        };
+
+        window.addGoalFunds = function (id) {
+            const g = state.data.goals.find(x => x.id === id);
+            if (!g) return;
+            window.showPrompt("Add Funds to " + g.name, "Enter the amount of " + g.currency + " to lock into this goal envelope:", async (amtStr) => {
+                const amt = parseFloat(amtStr);
+                if (isNaN(amt) || amt <= 0) return;
+                g.saved += amt;
+                if (g.saved > g.target) g.saved = g.target; // Cap it
+                await updateDb();
+                window.openModal('goals');
+                window.recalculateBalances();
+                window.renderApp();
+            }, 'number');
+        };
+
+        window.renderTagsUI = function () {
+            // Aggregate Tags
+            let tagMap = {}; // { "#tag": { count, totalExpense, totalIncome } }
+            state.data.transactions.forEach(t => {
+                if (t.tags && t.tags.length > 0) {
+                    t.tags.forEach(tag => {
+                        let tName = tag.toLowerCase();
+                        if (!tagMap[tName]) tagMap[tName] = { count: 0, totalExpense: 0, totalIncome: 0, txs: [] };
+                        tagMap[tName].count++;
+                        tagMap[tName].txs.push(t);
+                        
+                        // Approximate all values to global currency using rate
+                        let amt = Number(t.amount);
+                        const acc = state.data.accounts.find(a => a.id === t.accountId);
+                        if (acc && acc.currency !== state.data.settings.currency) {
+                            if (state.data.settings.currency === 'AED' && acc.currency === 'INR') amt = amt / state.data.settings.rate;
+                            if (state.data.settings.currency === 'INR' && acc.currency === 'AED') amt = amt * state.data.settings.rate;
+                        }
+
+                        if (t.type === 'expense' || t.type === 'transfer_out') tagMap[tName].totalExpense += amt;
+                        if (t.type === 'income' || t.type === 'transfer_in') tagMap[tName].totalIncome += amt;
+                    });
+                }
+            });
+
+            const tagsArray = Object.keys(tagMap).map(k => ({ name: k, ...tagMap[k] })).sort((a,b) => b.totalExpense - a.totalExpense);
+
+            return `
+            <div class="max-w-4xl mx-auto space-y-6">
+                <div class="flex flex-wrap gap-2 mb-6 justify-center">
+                    ${tagsArray.map(t => `
+                        <button onclick="window.viewTagDetails('${t.name}')" class="px-4 py-2 bg-slate-50 hover:bg-pink-50 hover:text-pink-600 rounded-xl border border-slate-200 text-xs font-black text-slate-600 transition-colors">
+                            ${t.name} <span class="ml-1 opacity-50 font-normal">(${t.count})</span>
+                        </button>
+                    `).join('') || '<p class="text-xs font-bold text-slate-400">No #tags found in any transactions yet.</p>'}
+                </div>
+                
+                <div id="tag-detail-view" class="bg-slate-50 rounded-[2.5rem] border border-slate-100 p-8 hidden text-center">
+                    <!-- Tag specific UI injected here by viewTagDetails -->
+                </div>
+            </div>
+            `;
+        };
+
+        window.viewTagDetails = function(tagName) {
+            const v = document.getElementById('tag-detail-view');
+            v.classList.remove('hidden');
+            
+            // Re-aggregate
+            let txs = [];
+            let exp = 0;
+            let inc = 0;
+            
+            state.data.transactions.forEach(t => {
+                if (t.tags && t.tags.map(x=>x.toLowerCase()).includes(tagName.toLowerCase())) {
+                    txs.push(t);
+                    let amt = Number(t.amount);
+                    const acc = state.data.accounts.find(a => a.id === t.accountId);
+                    if (acc && acc.currency !== state.data.settings.currency) {
+                        if (state.data.settings.currency === 'AED' && acc.currency === 'INR') amt = amt / state.data.settings.rate;
+                        if (state.data.settings.currency === 'INR' && acc.currency === 'AED') amt = amt * state.data.settings.rate;
+                    }
+                    if (t.type === 'expense' || t.type === 'transfer_out') exp += amt;
+                    if (t.type === 'income' || t.type === 'transfer_in') inc += amt;
+                }
+            });
+
+            txs.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            v.innerHTML = `
+                <div class="flex items-center justify-center space-x-3 mb-6">
+                    <div class="w-12 h-12 bg-pink-100 text-pink-500 rounded-full flex items-center justify-center"><i data-lucide="hash" class="w-6 h-6"></i></div>
+                    <h3 class="text-2xl font-black text-slate-900">${tagName}</h3>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-8">
+                    <div class="bg-white p-4 rounded-3xl shadow-sm">
+                        <p class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Total Spent</p>
+                        <p class="text-xl font-black text-red-500 num-font">${state.data.settings.currency} ${exp.toFixed(2)}</p>
+                    </div>
+                    <div class="bg-white p-4 rounded-3xl shadow-sm">
+                        <p class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Total Earned</p>
+                        <p class="text-xl font-black text-emerald-500 num-font">${state.data.settings.currency} ${inc.toFixed(2)}</p>
+                    </div>
+                </div>
+                
+                <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 text-left ml-2">Recent Transactions</h4>
+                <div class="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar text-left pr-2">
+                    ${txs.slice(0, 50).map(t => {
+                        const isInc = t.type === 'income' || t.type === 'transfer_in';
+                        return `
+                        <div class="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm">
+                            <div>
+                                <p class="text-xs font-bold text-slate-800">${t.category || t.type}</p>
+                                <p class="text-[9px] font-medium text-slate-400">${t.note}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-black ${isInc ? 'text-emerald-500' : 'text-slate-900'}">${isInc ? '+' : '-'} ${t.amount}</p>
+                                <p class="text-[8px] font-black uppercase text-slate-400">${new Date(t.date).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            lucide.createIcons();
         };
 
         window.renderCalculator = function () {
@@ -3822,14 +3824,22 @@
 
                 <!-- 1. HEALTH SCORE (REMOVED) -->
 
+                <!-- 6. CASHFLOW WATERFALL -->
+                <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
+                    <h4 class="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Cashflow Waterfall (Last 30 Days)</h4>
+                    <div class="relative h-64 w-full mb-4">
+                        <canvas id="waterfall-chart"></canvas>
+                    </div>
+                </div>
+
                 <!-- 5. INTERACTIVE WEALTH COMPOSITION -->
                 <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
-                    <h4 class="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Interactive Wealth Composition</h4>
+                    <h4 class="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Cost-Basis Asset Allocation</h4>
                     
-                    <p class="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-4">Gross Assets</p>
+                    <p class="text-[9px] font-black uppercase text-slate-400 tracking-widest mt-4">Gross Invested Assets</p>
                     <p id="chart-center-val" class="text-2xl font-black text-slate-800 text-center leading-tight mx-auto mb-4"></p>
                     
-                    <div class="relative h-16 w-full mb-8">
+                    <div class="relative h-64 w-full mb-8">
                         <canvas id="allocation-chart"></canvas>
                     </div>
 
@@ -3909,20 +3919,8 @@
             let debts = 0;
             state.data.debts.filter(d => !d.settled && d.type === 'payable').forEach(d => debts += (d.currency === 'AED' ? Number(d.amount) : Number(d.amount) / r));
 
-            // 3. Sinking (Mentally Locked)
-            // Reality Check: Treat the ENTIRE target as a liability/commitment
-            const totalSinking = (state.data.sinkingFunds || []).reduce((s, f) => s + Number(f.target), 0);
-
-            // Also calc monthly flow for details
-            const sinkingMonthly = (state.data.sinkingFunds || []).reduce((s, f) => {
-                const due = new Date(f.date); const now = new Date();
-                const diffDays = Math.ceil(Math.abs(due - now) / (1000 * 60 * 60 * 24));
-                const safeMonths = Math.max(1, Math.ceil(diffDays / 30));
-                return s + (f.target / safeMonths);
-            }, 0);
-
-            // Net Free = Assets - Debts - Sinking Commitments
-            const netFree = assets - debts - totalSinking;
+            // Net Free = Assets - Debts
+            const netFree = assets - debts;
 
             // Render Results
             const b = document.getElementById('modal-backdrop');
@@ -3935,9 +3933,9 @@
                 <!--NET WORTH CARD-->
                 <div class="bg-indigo-900 text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
                     <div class="relative z-10">
-                        <p class="text-[10px] text-indigo-300 font-black uppercase tracking-widest mb-2">Net Free Wealth</p>
+                        <p class="text-[10px] text-indigo-300 font-black uppercase tracking-widest mb-2">Net Wealth</p>
                         <h2 class="text-5xl font-black text-white num-font mb-2">AED ${Math.round(netFree).toLocaleString()}</h2>
-                        <p class="text-[10px] font-bold text-indigo-400">Assets - Liabilities - Sinking Goals</p>
+                        <p class="text-[10px] font-bold text-indigo-400">Total Assets - Total Liabilities</p>
                     </div>
                     <div class="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
                 </div>
@@ -3954,18 +3952,7 @@
                     </div>
                 </div>
 
-                <!--SINKING ALERT-->
-                <div class="bg-amber-50 p-6 rounded-[2.5rem] border border-amber-100 mb-4">
-                    <div class="flex items-center justify-center gap-2 mb-2 text-amber-600">
-                        <i data-lucide="anchor" class="w-5 h-5"></i>
-                        <span class="font-black text-xs uppercase tracking-widest">Compromised Cash</span>
-                    </div>
-                    <p class="text-3xl font-black text-slate-800">-${Math.round(totalSinking).toLocaleString()}</p>
-                    <p class="text-[10px] font-bold text-amber-600/60 mt-1">Allocated to Sinking Funds</p>
-                    <div class="mt-4 pt-4 border-t border-amber-200/50">
-                        <p class="text-[9px] font-bold text-slate-400 uppercase">Monthly Lock: AED ${Math.round(sinkingMonthly).toLocaleString()}/mo</p>
-                    </div>
-                </div>
+
 
                 <button onclick="window.renderSettingsUI(); window.openModal('settings');" class="text-slate-400 font-bold text-xs hover:text-slate-800 transition-colors uppercase">
                     Back to Settings
@@ -4102,13 +4089,13 @@
                 <!--4. COMMODITY RATES-->
                 <div class="bg-amber-50/50 p-8 rounded-[3rem] border border-amber-100">
                     <h4 class="text-xs font-black text-amber-700 uppercase tracking-widest mb-6 flex items-center gap-2">
-                         <i data-lucide="gem" class="w-4 h-4"></i> Live Gold/Metal Rates (INR/g & AED/g)
+                         <i data-lucide="gem" class="w-4 h-4"></i> Manual Gold/Silver Rates (INR/g & AED/g)
                     </h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
                             <p class="text-[9px] font-bold text-amber-600 uppercase mb-4 tracking-widest text-center border-b border-amber-200 pb-2">India Rates (INR)</p>
                             <div class="grid grid-cols-2 gap-4">
-                                ${Object.keys(state.data.commodityRates || { Gold: 0, Silver: 0, Platinum: 0, Palladium: 0 }).map(metal => `
+                                ${['Gold', 'Silver'].map(metal => `
                                     <div class="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm text-center">
                                         <label class="text-[9px] font-bold text-amber-900/40 uppercase block mb-2">${metal}</label>
                                         <input type="number" id="rate-${metal}" value="${(state.data.commodityRates || {})[metal] || 0}" class="w-full text-center font-black text-amber-900 bg-transparent outline-none border-b border-transparent focus:border-amber-400 placeholder-amber-200">
@@ -4119,7 +4106,7 @@
                         <div>
                             <p class="text-[9px] font-bold text-amber-600 uppercase mb-4 tracking-widest text-center border-b border-amber-200 pb-2">UAE Rates (AED)</p>
                             <div class="grid grid-cols-2 gap-4">
-                                ${Object.keys(state.data.commodityRatesAED || { Gold: 0, Silver: 0, Platinum: 0, Palladium: 0 }).map(metal => `
+                                ${['Gold', 'Silver'].map(metal => `
                                     <div class="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm text-center">
                                         <label class="text-[9px] font-bold text-amber-900/40 uppercase block mb-2">${metal}</label>
                                         <input type="number" id="rate-aed-${metal}" value="${(state.data.commodityRatesAED || {})[metal] || 0}" class="w-full text-center font-black text-amber-900 bg-transparent outline-none border-b border-transparent focus:border-amber-400 placeholder-amber-200">
@@ -4263,7 +4250,7 @@
             // Commodity Rates
             if (!state.data.commodityRates) state.data.commodityRates = {};
             if (!state.data.commodityRatesAED) state.data.commodityRatesAED = {};
-            ['Gold', 'Silver', 'Platinum', 'Palladium'].forEach(m => {
+            ['Gold', 'Silver'].forEach(m => {
                 const elInr = document.getElementById('rate-' + m);
                 if (elInr) state.data.commodityRates[m] = parseFloat(elInr.value);
 
@@ -4518,10 +4505,20 @@
 
         // WHATSAPP INTEGRATION
         // UNIVERSAL MESSAGING HANDLER
-        window.sendWhapiReminder = async function (name, debtDetails, isRaw = false) {
+        window.sendWhapiReminder = async function (name, debtDetails, isRaw = false, netValue = 1) {
             const isAuto = state.data.settings.isAutoMessagingEnabled;
             const token = state.data.settings.messagingToken || state.data.settings.whapiToken;
-            const msgBody = isRaw ? debtDetails : `Hi ${name}, just a quick reminder regarding the ${debtDetails}. Let me know when you can settle this. Thanks!`;
+            
+            let msgBody = '';
+            if (isRaw) {
+                msgBody = debtDetails;
+            } else {
+                if (netValue < 0) {
+                    msgBody = `Hi ${name}, just a quick update regarding the ${debtDetails} I owe you. I will settle this soon. Thanks!`;
+                } else {
+                    msgBody = `Hi ${name}, just a quick reminder regarding the ${debtDetails}. Let me know when you can settle this. Thanks!`;
+                }
+            }
 
             // Get Contact & Phone
             const contact = (state.data.contacts && state.data.contacts.find(c => c.name === name));
@@ -4600,7 +4597,7 @@
 
                     if (dueItems.length > 0) {
                         const summary = dueItems.map(i => `• ${i.type} to ${i.name}: ${i.amount} ${i.currency}`).join('\\n');
-                        const msgBody = `📅 *Payment Reminder: Due Today* (${todayStr})\\n\\n${summary}\\n\\nCheck Finshaanire for details.`;
+                        const msgBody = `📅 *Payment Reminder: Due Today* (${todayStr})\\n\\n${summary}\\n\\nCheck FI SHAANIRE for details.`;
                         const cleanPhone = myPhone.replace(/[^0-9]/g, '');
 
                         try {
@@ -5183,7 +5180,7 @@
                     <!-- Actions -->
                     <div class="flex justify-between items-center">
                         <button onclick="window.openFriendLedger('${p.name}')" class="text-xs font-bold text-slate-400 hover:text-indigo-600 flex items-center gap-1"><i data-lucide="history" class="w-3 h-3"></i> Full History</button>
-                        <button onclick="window.sendWhapiReminder('${p.name}', '${finalSummary}')" class="px-4 py-2 bg-indigo-50 text-[10px] font-black uppercase text-indigo-600 hover:text-white hover:bg-indigo-500 rounded-xl transition-all flex items-center gap-2">
+                        <button onclick="window.sendWhapiReminder('${p.name}', '${finalSummary}', false, ${p.virtualNet})" class="px-4 py-2 bg-indigo-50 text-[10px] font-black uppercase text-indigo-600 hover:text-white hover:bg-indigo-500 rounded-xl transition-all flex items-center gap-2">
                             <i data-lucide="zap" class="w-3 h-3"></i> Auto-Remind
                         </button>
                     </div>
@@ -5400,7 +5397,7 @@
             const spend = state.data.transactions.filter(t => t.type === 'expense'), total = spend.reduce((s, t) => { const acc = state.data.accounts.find(a => a.id === t.accountId); const cur = t.currency || acc?.currency || 'AED'; return s + (Number(t.amount) * (cur === 'AED' ? state.data.settings.rate : 1)); }, 0);
             return `<div class="max-w-xl mx-auto p-10 bg-white rounded-[3rem] border text-center shadow-sm text-center text-center text-center text-center text-center"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-10 tracking-widest text-center text-center text-center">Weight distribution</h4>
                 <div class="text-right mb-6 flex justify-end gap-2">
-                    <button onclick="window.downloadCSV()" class="bg-slate-100 text-slate-600 py-2 px-4 rounded-xl font-bold text-[10px] uppercase hover:bg-slate-200">CSV</button>
+                    <button onclick="window.csvExport()" class="bg-slate-100 text-slate-600 py-2 px-4 rounded-xl font-bold text-[10px] uppercase hover:bg-slate-200">CSV</button>
                     <button onclick="window.generatePDF()" class="bg-slate-900 text-white py-2 px-4 rounded-xl font-bold text-[10px] uppercase shadow-lg hover:bg-emerald-500 transition-colors">Download Official PDF</button>
                 </div>
                 <div class="space-y-4">
@@ -5422,7 +5419,7 @@
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(100);
-            doc.text(`Generated on ${new Date().toLocaleDateString()} | Finshaanire Wealth Hub`, 105, 26, null, null, "center");
+            doc.text(`Generated on ${new Date().toLocaleDateString()} | FI SHAANIRE Wealth Hub`, 105, 26, null, null, "center");
 
             // -- SUMMARY --
             let totalAssets = 0, totalLiabilities = 0;
@@ -5493,12 +5490,52 @@
                 styles: { fontSize: 8 }
             });
 
-            doc.save(`Finshaanire_Statement_${new Date().toISOString().split('T')[0]}.pdf`);
+            doc.save(`FI_SHAANIRE_Statement_${new Date().toISOString().split('T')[0]}.pdf`);
         };
 
         window.csvExport = function () {
-            // ... existing csv code ...
-        }
+            if (!state.data.transactions || state.data.transactions.length === 0) {
+                window.showToast("No transactions to export", "error");
+                return;
+            }
+
+            const headers = ['Date', 'Account', 'Type', 'Category', 'Amount', 'Currency', 'Note'];
+            const rows = [headers.join(',')];
+
+            state.data.transactions.forEach(t => {
+                const acc = state.data.accounts.find(a => a.id === t.accountId);
+                const accName = acc ? acc.name : 'Unknown';
+                
+                const cleanNote = (t.note || '').replace(/"/g, '""');
+                const cleanCat = (t.category || '').replace(/"/g, '""');
+                const cleanAcc = accName.replace(/"/g, '""');
+                
+                const row = [
+                    t.date ? t.date.split('T')[0] : '',
+                    `"${cleanAcc}"`,
+                    t.type || '',
+                    `"${cleanCat}"`,
+                    t.amount || 0,
+                    t.currency || (acc ? acc.currency : ''),
+                    `"${cleanNote}"`
+                ];
+                rows.push(row.join(','));
+            });
+
+            const csvString = rows.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `FI_SHAANIRE_Transactions_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            window.showToast("CSV Exported Successfully", "success");
+        };
 
         // --- REMITTANCE ARBITRAGE TRACKER ---
         window.renderRemittance = function () {
@@ -5627,6 +5664,8 @@
             const ctx = document.getElementById('chart-remit');
             if (remittance.length === 0 || !ctx) return;
 
+            let existingChart = Chart.getChart(ctx);
+            if (existingChart) existingChart.destroy();
             new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -5869,7 +5908,7 @@
             // Save Commodity Rates
             if (!state.data.commodityRates) state.data.commodityRates = {};
             if (!state.data.commodityRatesAED) state.data.commodityRatesAED = {};
-            ['Gold', 'Silver', 'Platinum', 'Palladium'].forEach(metal => {
+            ['Gold', 'Silver'].forEach(metal => {
                 const elInr = document.getElementById('rate-' + metal);
                 if (elInr) state.data.commodityRates[metal] = parseFloat(elInr.value) || 0;
 
@@ -6097,81 +6136,11 @@
 
         // --- ASSET SELL/BUY FLOW HELPERS ---
         window.toggleTradeFields = function () {
-            const sId = document.getElementById('ts').value;
-            const tId = document.getElementById('ttg').value;
-            const sAcc = state.data.accounts.find(a => a.id === sId);
-            const tAcc = state.data.accounts.find(a => a.id === tId);
-
-            const sellArea = document.getElementById('asset-sell-area');
-            const buyArea = document.getElementById('asset-buy-area');
-
-            // Handle Source (Sell)
-            if (sAcc && sellArea) {
-                const isGoldSell = sAcc.type === 'Commodity' || (sAcc.subtype && ['Gold', 'Silver', 'Platinum'].includes(sAcc.subtype));
-                const isMFSell = sAcc.type === 'Mutual Fund';
-
-                if (isGoldSell || isMFSell) {
-                    sellArea.classList.remove('hidden');
-                    document.getElementById('lbl-sell-qty').innerText = isMFSell ? "Units to Redeem" : "Grams to Sell";
-                    document.getElementById('lbl-sell-rate').innerText = isMFSell ? "NAV (Price per Unit)" : "Rate per Gram";
-
-                    if (isGoldSell) {
-                        let rate = 0;
-                        if (sAcc.currency === 'AED') rate = (state.data.commodityRatesAED && state.data.commodityRatesAED[sAcc.subtype]);
-                        if (!rate) rate = state.data.commodityRates[sAcc.subtype] || 0;
-                        if (rate > 0) document.getElementById('sell-rate').value = rate;
-                    }
-                    if (isMFSell && sAcc.schemeCode && state.data.portfolio[sAcc.schemeCode]) {
-                        document.getElementById('sell-rate').value = state.data.portfolio[sAcc.schemeCode].nav;
-                    }
-                } else {
-                    sellArea.classList.add('hidden');
-                    document.getElementById('sell-qty').value = '';
-                    document.getElementById('sell-rate').value = '';
-                }
-            }
-
-            // Handle Destination (Buy)
-            if (tAcc && buyArea) {
-                const isGoldBuy = tAcc.type === 'Commodity' || (tAcc.subtype && ['Gold', 'Silver', 'Platinum'].includes(tAcc.subtype));
-                const isMFBuy = tAcc.type === 'Mutual Fund';
-
-                if (isGoldBuy || isMFBuy) {
-                    buyArea.classList.remove('hidden');
-                    document.getElementById('lbl-buy-rate').innerText = isMFBuy ? "Purchase NAV" : `Rate per Gram (${tAcc.currency})`;
-                    document.getElementById('buy-rate').value = ''; // Reset user input
-
-                    // Auto-suggest rate based on currency
-                    if (isGoldBuy) {
-                        let defaultRate = '';
-                        if (tAcc.currency === 'AED') {
-                            defaultRate = (state.data.commodityRatesAED && state.data.commodityRatesAED[tAcc.subtype]) || '';
-                            if (!defaultRate && state.data.commodityRates[tAcc.subtype]) defaultRate = (state.data.commodityRates[tAcc.subtype] / state.data.settings.rate).toFixed(2);
-                        } else {
-                            defaultRate = state.data.commodityRates[tAcc.subtype] || '';
-                        }
-                        if (defaultRate) document.getElementById('buy-rate').value = defaultRate;
-                    }
-                    if (isMFBuy && tAcc.schemeCode && state.data.portfolio[tAcc.schemeCode]) {
-                        document.getElementById('buy-rate').value = state.data.portfolio[tAcc.schemeCode].nav;
-                    }
-                } else {
-                    buyArea.classList.add('hidden');
-                    document.getElementById('buy-rate').value = '';
-                }
-            }
+            // REMOVED: Asset quantities/NAV inputs are no longer required in Cost-Basis mode.
         };
 
         window.calcSellTotal = function () {
-            const qty = parseFloat(document.getElementById('sell-qty').value) || 0;
-            const rate = parseFloat(document.getElementById('sell-rate').value) || 0;
-            const total = qty * rate;
-
-            if (total > 0) {
-                const tamt = document.getElementById('tamt');
-                tamt.value = total.toFixed(2);
-                window.calcRemit(total); // Update estimation preview
-            }
+            // REMOVED
         };
 
         window.calcRemit = function (v) {
@@ -6277,58 +6246,31 @@
             };
 
             if (t === 'Commodity') {
-                newAcc.weight = w;
                 newAcc.subtype = document.getElementById('asub')?.value || document.getElementById('commodity-type')?.value || 'Gold';
-                newAcc.purity = document.getElementById('apurity')?.value || '24K';
-                newAcc.form = document.getElementById('aform')?.value || 'Bar';
-                newAcc.makingCharges = parseFloat(document.getElementById('amc')?.value) || 0;
-                const originalCostValue = document.getElementById('original-cost')?.value;
-                newAcc.originalCost = parseFloat(originalCostValue) || 0;
-                console.log(`Saving commodity: ${n}, originalCost input value: "${originalCostValue}", parsed: ${newAcc.originalCost}`);
-
-                let rate = state.data.commodityRates[newAcc.subtype] || 0;
-                // Purity Adjustment (Simple Logic: 22K is ~91.6% of 24K value)
-                if (newAcc.purity === '22K') rate = rate * 0.916;
-                if (newAcc.purity === '18K') rate = rate * 0.750;
-
-                newAcc.balance = window.toCurrency(w * rate);
             } else if (t === 'Mutual Fund') {
-                newAcc.units = u;
-                newAcc.schemeCode = code;
-                newAcc.folio = document.getElementById('afolio')?.value || '';
                 newAcc.category = document.getElementById('acat')?.value || 'Equity';
-                newAcc.sipDetails = document.getElementById('asip')?.value || '';
-                newAcc.balance = 0;
+            }
+
+            if (bal !== 0) {
+                newAcc.balance = 0; // Starts at 0, transaction will fill it
+                state.data.transactions.push({
+                    id: window.genId(),
+                    accountId: newAcc.id,
+                    amount: window.toCurrency(bal),
+                    type: 'income',
+                    category: 'Opening Balance',
+                    note: 'Initial Balance',
+                    tags: ['#init'],
+                    date: new Date().toISOString(),
+                    exchangeRate: state.data.settings.rate
+                });
             } else {
-                // LEDGER-BASED REFACTOR: Initial Balance for Cash/Bank is an "Opening Balance" transaction
-                if (bal !== 0 && ['Bank Account', 'Cash', 'Savings'].includes(t)) {
-                    newAcc.balance = 0; // Starts at 0, transaction will fill it
-                    // We need to push the transaction AFTER pushing the account so the ID exists? 
-                    // Actually ID is generated in newAcc object. reliable.
-                    state.data.transactions.push({
-                        id: window.genId(),
-                        accountId: newAcc.id,
-                        amount: window.toCurrency(bal),
-                        type: 'income', // Treat as income or special 'opening'? 'income' is safest for sum.
-                        category: 'Opening Balance',
-                        note: 'Initial Balance',
-                        tags: ['#init'],
-                        date: new Date().toISOString(),
-                        exchangeRate: state.data.settings.rate
-                    });
-                    // Note: We don't call recalculateBalances yet, we do it at end of function via updateDb/renderApp cycle
-                } else {
-                    newAcc.balance = window.toCurrency(bal); // For other types or 0 balance
-                }
+                newAcc.balance = 0;
             }
 
             state.data.accounts.push(newAcc);
 
-            // If MF, try fetch initial NAV immediately
-            if (t === 'Mutual Fund' && code) {
-                // Background fetch, don't await blocking UI
-                window.refreshFund(newAcc.id);
-            }
+            // Mutual Fund fetch removed per cash-only logic
 
             await updateDb();
             window.setBtnLoading('btn-save-acc', false);
@@ -6469,103 +6411,7 @@
                 else if (sAcc.currency === 'INR' && tAcc.currency === 'AED') finalAmt = val / rate;
             }
 
-            // --- INVESTMENT LOGIC (Auto-Buy/Sell Units) ---
-
-            const buyRateInput = document.getElementById('buy-rate');
-            const explicitBuyRate = (buyRateInput && !buyRateInput.closest('#asset-buy-area').classList.contains('hidden')) ? parseFloat(buyRateInput.value) : 0;
-
-            // 1. DESTINATION (Buying/Depositing)
-            if (tAcc.type === 'Mutual Fund' && tAcc.schemeCode) {
-                const meta = state.data.portfolio ? state.data.portfolio[tAcc.schemeCode] : null;
-                const nav = explicitBuyRate > 0 ? explicitBuyRate : (meta ? parseFloat(meta.nav) : 0);
-                if (nav > 0) {
-                    const unitsBought = finalAmt / nav;
-                    state.data.accounts[tIdx].units = (state.data.accounts[tIdx].units || 0) + unitsBought;
-                    noteSuffix += ` [Bought ${unitsBought.toFixed(3)} Units @${nav}]`;
-                }
-            } else if (tAcc.type === 'Commodity' && tAcc.subtype) {
-                let metalRate = explicitBuyRate > 0 ? explicitBuyRate : 0;
-
-                if (metalRate === 0) {
-                    if (tAcc.currency === 'AED') {
-                        metalRate = (state.data.commodityRatesAED && state.data.commodityRatesAED[tAcc.subtype]) || 0;
-                        if (!metalRate && state.data.commodityRates[tAcc.subtype]) {
-                            metalRate = state.data.commodityRates[tAcc.subtype] / rate;
-                        }
-                    } else {
-                        metalRate = state.data.commodityRates[tAcc.subtype] || 0;
-                    }
-                }
-
-                if (metalRate > 0) {
-                    const weightBought = finalAmt / metalRate;
-                    state.data.accounts[tIdx].weight = (state.data.accounts[tIdx].weight || 0) + weightBought;
-                    // Track original cost: add the transfer amount (in account currency) to originalCost
-                    state.data.accounts[tIdx].originalCost = (state.data.accounts[tIdx].originalCost || 0) + finalAmt;
-                    noteSuffix += ` [Bought ${weightBought.toFixed(3)}g @${metalRate}/g]`;
-                }
-            }
-
-            // 2. SOURCE (Selling/Withdrawing)
-            const explicitSellQty = parseFloat(document.getElementById('sell-qty').value);
-            const explicitSellRate = parseFloat(document.getElementById('sell-rate').value);
-            const isSellFlow = !document.getElementById('asset-sell-area').classList.contains('hidden') && explicitSellQty > 0;
-
-            if (isSellFlow) {
-                // USE EXPLICIT USER INPUTS (High Precision)
-                // GHOST COST FIX: Reduce originalCost proportionally
-                const preWeight = sAcc.weight || 0;
-                const preUnits = sAcc.units || 0;
-
-                if (sAcc.type === 'Commodity' || (sAcc.subtype && ['Gold', 'Silver', 'Platinum'].includes(sAcc.subtype))) {
-                    state.data.accounts[sIdx].weight = Math.max(0, preWeight - explicitSellQty);
-                    noteSuffix += ` [Sold ${explicitSellQty}g @ ${explicitSellRate}]`;
-
-                    // Reduce Cost Basis
-                    if (preWeight > 0 && sAcc.originalCost) {
-                        const ratio = explicitSellQty / preWeight;
-                        state.data.accounts[sIdx].originalCost = Math.max(0, sAcc.originalCost - (sAcc.originalCost * ratio));
-                    }
-
-                } else if (sAcc.type === 'Mutual Fund') {
-                    state.data.accounts[sIdx].units = Math.max(0, preUnits - explicitSellQty);
-                    noteSuffix += ` [Sold ${explicitSellQty} Units @ ${explicitSellRate}]`;
-
-                    // Reduce Cost Basis (if tracked for MFs, usually implicit in NAV but good to track)
-                    // Accounts for MFs don't strictly have originalCost in this schema yet, but if they did:
-                    if (preUnits > 0 && sAcc.originalCost) {
-                        const ratio = explicitSellQty / preUnits;
-                        state.data.accounts[sIdx].originalCost = Math.max(0, sAcc.originalCost - (sAcc.originalCost * ratio));
-                    }
-                }
-            } else {
-                // FALLBACK TO AUTO-CALC (Standard Logic)
-                if (sAcc.type === 'Mutual Fund' && sAcc.schemeCode) {
-                    const meta = state.data.portfolio ? state.data.portfolio[sAcc.schemeCode] : null;
-                    const nav = meta ? parseFloat(meta.nav) : 0;
-                    if (nav > 0) {
-                        const unitsSold = val / nav; // Val is in Source Currency (INR)
-                        state.data.accounts[sIdx].units = Math.max(0, (state.data.accounts[sIdx].units || 0) - unitsSold);
-                        noteSuffix += ` [Sold ${unitsSold.toFixed(3)} Units]`;
-                    }
-                } else if (sAcc.type === 'Commodity' && sAcc.subtype) {
-                    let metalRate = 0;
-                    if (sAcc.currency === 'AED') {
-                        metalRate = (state.data.commodityRatesAED && state.data.commodityRatesAED[sAcc.subtype]) || 0;
-                        if (!metalRate && state.data.commodityRates[sAcc.subtype]) {
-                            metalRate = state.data.commodityRates[sAcc.subtype] / rate;
-                        }
-                    } else {
-                        metalRate = state.data.commodityRates[sAcc.subtype] || 0;
-                    }
-
-                    if (metalRate > 0) {
-                        const weightSold = val / metalRate; // Val is Source Currency
-                        state.data.accounts[sIdx].weight = Math.max(0, (state.data.accounts[sIdx].weight || 0) - weightSold);
-                        noteSuffix += ` [Sold ${weightSold.toFixed(3)}g]`;
-                    }
-                }
-            }
+            // --- INVESTMENT LOGIC REMOVED (Cost-Basis Only) ---
 
             // LEDGER-BASED REFACTOR: Do not manually update balances
 
@@ -6595,7 +6441,7 @@
                 <p class="text-[10px] font-black uppercase">Entity: ${d.party}</p>
                 <p class="text-3xl font-black">${d.amount} <span class="text-xs opacity-30">${d.currency}</span></p>
                 <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Enter Volume (${d.currency})</label><input type="number" id="samt" step="0.01" value="${d.amount}" class="w-full p-4 border rounded-xl font-black text-xl text-center outline-none"></div>
-                <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Select account</label><select id="sacc" class="w-full p-4 border rounded-xl bg-white font-bold text-center">${state.data.accounts.map(acc => `<option value="${acc.id}">${acc.name} (${acc.currency})</option>`).join('')}</select></div>
+                <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Select account</label><select id="sacc" class="w-full p-4 border rounded-xl bg-white font-bold text-center">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(acc => `<option value="${acc.id}">${acc.name} (${acc.currency})</option>`).join('')}</select></div>
                 <button id="btn-finalize-settle" onclick="window.finalizeSettle('${id}')" class="w-full bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase shadow-lg text-center text-center">Authorize Movement</button>
             </div> `;
             window.closeReminder(); document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
@@ -6743,55 +6589,59 @@
 
             t.innerText = "Transaction Ledger";
             c.innerHTML = `
-            <div class="max-w-5xl mx-auto space-y-6 pb-8">
+            <div class="w-full h-full flex flex-col space-y-4">
                 <!--Search & Export Header-->
-                <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-                    <div class="relative w-full md:w-auto flex-grow max-w-md">
-                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 py-2 border-b border-slate-200">
+                    <div class="relative w-full md:w-auto flex-grow max-w-xl">
+                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
                         <input type="text" id="ledger-search" oninput="window.filterLedger()" 
                             placeholder="Search #tags, notes, amounts..." 
-                            class="pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:border-emerald-500 w-full transition-all">
+                            class="pl-12 pr-4 py-4 bg-transparent border-none text-sm font-black outline-none w-full transition-all focus:ring-0 placeholder:text-slate-300">
                     </div>
-                    <button onclick="window.openModal('reports')" class="flex items-center space-x-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-lg active:scale-95">
-                        <i data-lucide="download" class="w-4 h-4"></i> <span>Export Data</span>
-                    </button>
+                    
+                    <div class="flex items-center space-x-2">
+                         <div class="flex items-center space-x-2 mr-4 hidden md:flex">
+                             <input type="date" id="ledger-date-from" onchange="window.filterLedger()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 uppercase outline-none focus:border-emerald-500 transition-all cursor-pointer hover:bg-white text-center w-28" placeholder="From">
+                             <span class="text-slate-300 font-bold">-</span>
+                             <input type="date" id="ledger-date-to" onchange="window.filterLedger()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 uppercase outline-none focus:border-emerald-500 transition-all cursor-pointer hover:bg-white text-center w-28" placeholder="To">
+                         </div>
+
+                        <button onclick="window.openModal('reports')" class="flex items-center space-x-2 bg-slate-100 text-slate-600 px-6 py-3 rounded-2xl font-bold text-[10px] uppercase hover:bg-emerald-500 hover:text-white transition-all">
+                            <i data-lucide="download" class="w-4 h-4"></i> <span>Export</span>
+                        </button>
+                        <button onclick="window.closeModal()" class="p-3 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
                 </div>
 
                 <!--Filter Chips-->
-            <div class="flex flex-wrap gap-2 px-2">
+            <div class="flex flex-wrap gap-2 px-2 pb-4">
                 <button id="filter-btn-all" onclick="window.setLedgerFilter('all')" class="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase shadow-lg transform scale-105 transition-all">All</button>
                 <button id="filter-btn-income" onclick="window.setLedgerFilter('income')" class="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-xl text-[10px] font-bold uppercase transition-all">Income</button>
                 <button id="filter-btn-expense" onclick="window.setLedgerFilter('expense')" class="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-xl text-[10px] font-bold uppercase transition-all">Expense</button>
                 <button id="filter-btn-transfer" onclick="window.setLedgerFilter('transfer')" class="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-xl text-[10px] font-bold uppercase transition-all">Transfers</button>
                 <button id="filter-btn-high" onclick="window.setLedgerFilter('high')" class="px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-xl text-[10px] font-bold uppercase transition-all">High Value (>5k)</button>
-
-                <div class="h-6 w-px bg-slate-200 mx-2"></div>
-
-                <div class="flex items-center space-x-2">
-                    <input type="date" id="ledger-date-from" onchange="window.filterLedger()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 uppercase outline-none focus:border-emerald-500 transition-all cursor-pointer hover:bg-white text-center w-28" placeholder="From">
-                        <span class="text-slate-300 font-bold">-</span>
-                        <input type="date" id="ledger-date-to" onchange="window.filterLedger()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 uppercase outline-none focus:border-emerald-500 transition-all cursor-pointer hover:bg-white text-center w-28" placeholder="To">
-                        </div>
+                
+                <div class="flex items-center space-x-2 ml-4 md:hidden">
+                    <input type="date" id="ledger-date-from-mobile" onchange="document.getElementById('ledger-date-from').value = this.value; window.filterLedger()" class="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-500 uppercase outline-none focus:border-emerald-500 w-24">
+                    <span class="text-slate-300">-</span>
+                    <input type="date" id="ledger-date-to-mobile" onchange="document.getElementById('ledger-date-to').value = this.value; window.filterLedger()" class="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-500 uppercase outline-none focus:border-emerald-500 w-24">
                 </div>
+            </div>
 
-                <!-- Table Container -->
-                <div class="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-xl max-h-[60vh] overflow-y-auto custom-scrollbar">
-                    <table class="w-full text-left relative">
-                        <thead class="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+                <!-- Table Container (Full Statement View) -->
+                <div class="flex-grow overflow-y-auto custom-scrollbar -mx-6 px-6 relative">
+                    <table class="w-full text-left relative table-auto">
+                        <thead class="bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b-2 border-slate-900">
                             <tr>
-                                <th class="px-6 py-4 font-black text-[9px] uppercase tracking-widest text-slate-400">Date</th>
-                                <th class="px-6 py-4 font-black text-[9px] uppercase tracking-widest text-slate-400">Details</th>
-                                <th class="px-6 py-4 font-black text-[9px] uppercase tracking-widest text-slate-400 text-center">Account</th>
-                                <th class="px-6 py-4 font-black text-[9px] uppercase tracking-widest text-slate-400 text-right">Amount</th>
-                                <th class="px-6 py-4 font-black text-[9px] uppercase tracking-widest text-slate-400 text-center">Action</th>
+                                <th class="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-800 w-1/6">Date</th>
+                                <th class="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-800 w-2/6">Transaction Details</th>
+                                <th class="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-800 text-center w-1/6">Account</th>
+                                <th class="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-800 text-right w-1/6">Amount</th>
+                                <th class="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400 text-center w-1/6">Action</th>
                             </tr>
                         </thead>
                         <tbody id="master-ledger-body" class="divide-y divide-slate-100 text-sm"></tbody>
                     </table>
-                </div>
-
-                <div class="text-center pt-2">
-                    <button onclick="window.closeModal()" class="px-8 py-3 bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl font-bold uppercase text-[10px] transition-colors">Close View</button>
                 </div>
             </div>`;
 
@@ -6862,17 +6712,7 @@
 
             const investedINR = a.currency === 'AED' ? investedNative * r : investedNative;
 
-            // 3. Profit / Loss
-            const plNative = curNative - investedNative;
-            const plINR = curINR - investedINR;
-            const plPercent = investedNative > 0 ? (plNative / investedNative * 100) : 0;
-            const isProfit = plNative >= 0;
-
-            // 4. Projection (Simple CAGR @ 10% for 5Y/10Y)
-            const growthRate = isInv ? 0.10 : 0.04; // 10% for inv, 4% for banks
-            const fv5 = curNative * Math.pow(1 + growthRate, 5);
-            const fv10 = curNative * Math.pow(1 + growthRate, 10);
-            const currSymbol = a.currency === 'AED' ? 'AED' : '₹';
+            // 3. Profit / Loss & Projections (REMOVED: Cost-Basis Only)
 
             // --- RENDER UI ---
             c.innerHTML = `
@@ -6881,46 +6721,20 @@
                     <!--HERO CARD-->
                     <div class="bg-slate-900 text-white p-8 rounded-[3rem] text-center shadow-xl relative overflow-hidden">
                         <div class="relative z-10">
-                            <p class="text-[10px] text-emerald-400 font-black uppercase mb-1 tracking-widest">Current Value</p>
+                            <p class="text-[10px] text-emerald-400 font-black uppercase mb-1 tracking-widest">${isInv ? 'Total Invested Amount' : 'Current Balance'}</p>
                             <div class="flex items-baseline justify-center space-x-2">
                                 <span class="text-4xl font-black">${a.currency} ${curNative.toLocaleString()}</span>
                             </div>
                             ${a.currency === 'AED' ? `<p class="text-xs text-slate-500 font-bold mt-1">≈ ₹${Math.round(curINR).toLocaleString()}</p>` : ''}
-                            
-                            ${isInv ? `
-                            <div class="grid grid-cols-2 gap-4 mt-8 border-t border-slate-700/50 pt-6">
-                                <div>
-                                    <p class="text-[9px] text-slate-400 uppercase font-bold">Invested</p>
-                                    <p class="font-bold text-lg">${a.currency} ${investedNative.toLocaleString()}</p>
-                                </div>
-                                <div>
-                                    <p class="text-[9px] text-slate-400 uppercase font-bold">Returns</p>
-                                    <p class="font-bold text-lg ${isProfit ? 'text-emerald-400' : 'text-red-400'}">
-                                        ${isProfit ? '+' : ''}${plNative.toLocaleString()} <span class="text-xs opacity-70">(${plPercent.toFixed(1)}%)</span>
-                                    </p>
-                                </div>
-                            </div>
-                            ` : ''}
                         </div>
                     </div>
 
-                    <!--PROJECTION CARDS(Conditional)-->
-            ${isInv ? `
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-white p-6 rounded-[2.5rem] border text-center shadow-sm">
-                            <p class="text-[9px] text-slate-400 font-black uppercase mb-2">5 Year Forecast</p>
-                            <p class="text-xl font-black text-slate-800">${currSymbol} ${Math.round(fv5).toLocaleString()}</p>
-                            <p class="text-[8px] text-emerald-600 font-bold mt-1">+${(growthRate * 100)}% CAGR</p>
-                        </div>
-                        <div class="bg-white p-6 rounded-[2.5rem] border text-center shadow-sm">
-                            <p class="text-[9px] text-slate-400 font-black uppercase mb-2">10 Year Forecast</p>
-                            <p class="text-xl font-black text-slate-800">${currSymbol} ${Math.round(fv10).toLocaleString()}</p>
-                            <p class="text-[8px] text-emerald-600 font-bold mt-1">Compound Power</p>
-                        </div>
-                    </div>` : ''
-                }
-
                     <!--ACTIONS -->
+                    ${isInv ? `
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                         <button onclick="window.quickInvest('${id}')" class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-600 transition-all shadow-md">+ Invest More</button>
+                         <button onclick="window.quickLiquidate('${id}')" class="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all">- Liquidate</button>
+                    </div>` : ''}
                     <div class="flex justify-center space-x-4">
                          ${isInv ? `<button onclick="window.editOriginalCost('${id}')" class="px-6 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">Set Initial Investment</button>` : ''}
                          <button onclick="window.delAccount('${id}')" class="px-6 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-xs uppercase hover:bg-red-100 transition-all">Delete Asset</button>
@@ -7111,96 +6925,75 @@
 
         window.renderCharts = function () {
             const r = state.data.settings.rate;
-            const currSym = window.chartCurrency === 'AED' ? 'AED' : '₹';
+            const cur = window.chartCurrency || 'AED';
 
-            // --- INIT CANVAS CONTEXTS ---
-            const chartIds = ['chart-lifestyle', 'chart-allocation'];
-            const ctxs = {};
+            const canvas = document.getElementById('waterfall-chart');
+            if (!canvas) return;
 
-            chartIds.forEach(id => {
-                const canvas = document.getElementById(id);
-                if (canvas) {
-                    const ctx = canvas.getContext('2d');
-                    const existingChart = Chart.getChart(canvas);
-                    if (existingChart) existingChart.destroy();
-                    ctxs[id] = ctx;
+            const existingChart = Chart.getChart(canvas);
+            if (existingChart) existingChart.destroy();
+
+            // Calculate Waterfall Data (Last 30 Days)
+            const d = new Date(); d.setMonth(d.getMonth() - 1);
+            let inc = 0;
+            let exp = 0;
+            state.data.transactions.forEach(t => {
+                if (new Date(t.date) >= d) {
+                    const val = window.toChartCur(Number(t.amount), t.currency || 'AED', r);
+                    if (t.type === 'income') inc += val;
+                    if (t.type === 'expense') exp += val;
                 }
             });
 
-            // --- 1. LIFESTYLE (Expense Trends) ---
-            if (ctxs['chart-lifestyle']) {
-                const catTotals = {};
-                const sixMonthsLabels = [];
-                for (let i = 5; i >= 0; i--) {
-                    const d = new Date(); d.setMonth(d.getMonth() - i);
-                    sixMonthsLabels.push(d.toLocaleString('default', { month: 'short' }));
-                }
+            const net = inc - exp;
 
-                state.data.transactions.forEach(t => {
-                    const td = new Date(t.date);
-                    const ageInMonths = (new Date().getFullYear() - td.getFullYear()) * 12 + (new Date().getMonth() - td.getMonth());
-                    if (ageInMonths < 6 && t.type === 'expense') {
-                        const val = window.toChartCur(Number(t.amount), t.currency || 'AED', r);
-                        catTotals[t.category] = (catTotals[t.category] || 0) + val;
-                    }
-                });
-
-                const topCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]);
-
-                const datasets = topCats.map((cat, idx) => {
-                    const dataPoints = [];
-                    for (let i = 5; i >= 0; i--) {
-                        const d = new Date(); d.setMonth(d.getMonth() - i);
-                        const monthExp = state.data.transactions
-                            .filter(t => {
-                                const td = new Date(t.date);
-                                return t.category === cat && t.type === 'expense' && td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear();
-                            })
-                            .reduce((s, t) => s + window.toChartCur(Number(t.amount), t.currency || 'AED', r), 0);
-                        dataPoints.push(monthExp);
-                    }
-                    const colors = ['#ec4899', '#8b5cf6', '#06b6d4'];
-                    return {
-                        label: cat,
-                        data: dataPoints,
-                        borderColor: colors[idx],
-                        backgroundColor: colors[idx] + '20',
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 4
-                    };
-                });
-
-                new Chart(ctxs['chart-lifestyle'], {
-                    type: 'line',
-                    data: { labels: sixMonthsLabels, datasets: datasets },
-                    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false } }, y: { display: false } } }
-                });
-            }
-
-            // --- 2. DETAILED ALLOCATION ---
-            if (ctxs['chart-allocation']) {
-                const breakdown = {};
-                state.data.accounts.forEach(a => {
-                    let key = a.type;
-                    if (a.type === 'Commodity') key = a.subtype || 'Gold';
-                    const val = window.toChartCur(Number(a.balance), a.currency || 'AED', r);
-                    if (val > 0) breakdown[key] = (breakdown[key] || 0) + val;
-                });
-
-                new Chart(ctxs['chart-allocation'], {
-                    type: 'doughnut',
-                    data: {
-                        labels: Object.keys(breakdown),
-                        datasets: [{
-                            data: Object.values(breakdown),
-                            backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#6366f1', '#ec4899', '#8b5cf6'],
-                            borderWidth: 0
-                        }]
+            new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: ['Income', 'Expenses', 'Net Cashflow'],
+                    datasets: [{
+                        data: [inc, -exp, net],
+                        backgroundColor: [
+                            '#10b981', // green for income
+                            '#ef4444', // red for expenses
+                            net >= 0 ? '#3b82f6' : '#ef4444' // blue for positive net, red for negative
+                        ],
+                        borderWidth: 0,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const val = Math.abs(context.raw);
+                                    return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(val);
+                                }
+                            }
+                        }
                     },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 10 } } } } }
-                });
-            }
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: {
+                                callback: function(value) {
+                                    return Math.abs(value) >= 1000 ? (value / 1000).toFixed(1) + 'k' : value;
+                                },
+                                font: { family: "'Plus Jakarta Sans'", size: 10, weight: 'bold' }
+                            }
+                        },
+                        x: { 
+                            grid: { display: false },
+                            ticks: { font: { family: "'Plus Jakarta Sans'", size: 12, weight: 'bold' } }
+                        }
+                    }
+                }
+            });
         };
 
         // --- AUTOMATION: SELF REMINDERS ---
@@ -7238,28 +7031,7 @@
 
         // --- NEW FUNCTIONS ---
 
-        window.saveSinkingFund = async () => {
-            const name = document.getElementById('sf-name').value;
-            const target = parseFloat(document.getElementById('sf-target').value);
-            const date = document.getElementById('sf-date').value;
-            const currency = document.getElementById('sf-currency').value || 'AED';
 
-            if (!name || isNaN(target) || !date) {
-                window.showToast("Please fill all fields properly.", "error");
-                return;
-            }
-
-            state.data.sinkingFunds.push({
-                id: window.genId(),
-                name, target, date, currency,
-                current: 0
-            });
-
-            await updateDb();
-            window.showToast("Sinking Fund Created!", "success");
-            window.closeModal();
-            window.renderApp();
-        };
 
         window.cloneTransaction = async (id) => {
             const tx = state.data.transactions.find(t => t.id === id);
@@ -7290,10 +7062,7 @@
                 async () => {
                     try {
                         const tx = state.data.transactions.find(t => t.id === id);
-                        if (!tx) {
-                            window.showToast("Error: Transaction ID not found.", "error");
-                            return;
-                        }
+                        if (!tx) return; // Ignore double clicks or already deleted items
 
                         // 1. REVERSE DEBT (If linked)
                         if (tx.debtId) {
@@ -7323,16 +7092,24 @@
                         // 2. Remove Transaction
                         state.data.transactions = state.data.transactions.filter(t => t.id !== id);
 
-                        // 2. Save & Refresh
+                        // 3. Save & Refresh Dashboard
                         await updateDb();
-
-                        // Integrity: Recalculate balances from ledger
                         window.recalculateBalances();
 
                         console.log("Deleted transaction:", id);
                         window.showToast("Transaction Deleted", "success");
                         window.renderApp();
 
+                        // 4. Refresh Active Modal Views
+                        if (document.getElementById('master-ledger-body')) {
+                            if (typeof window.filterLedger === 'function') window.filterLedger();
+                        } else if (document.getElementById('modal-title') && document.getElementById('modal-title').innerText.includes("Debt")) {
+                            const modalContent = document.getElementById('modal-content');
+                            if (modalContent && typeof window.renderDebtUI === 'function') {
+                                modalContent.innerHTML = window.renderDebtUI(); 
+                                lucide.createIcons();
+                            }
+                        }
                     } catch (error) {
                         console.error("Delete failed:", error);
                         window.showToast("Delete failed: " + error.message, "error");
@@ -7427,8 +7204,8 @@
                         // Defensive Defaults
                         if (!state.data.goals) state.data.goals = [];
                         if (!state.data.portfolio) state.data.portfolio = {};
-                        if (!state.data.commodityRates) state.data.commodityRates = { Gold: 7200, Silver: 90, Platinum: 2500, Palladium: 3000 };
-                        if (!state.data.commodityRatesAED) state.data.commodityRatesAED = { Gold: 315, Silver: 3.5, Platinum: 110, Palladium: 130 };
+                        if (!state.data.commodityRates) state.data.commodityRates = { Gold: 7200, Silver: 90 };
+                        if (!state.data.commodityRatesAED) state.data.commodityRatesAED = { Gold: 315, Silver: 3.5 };
                         if (!state.data.contacts) state.data.contacts = []; // New Feature: People Ledger
                         if (!state.data.allocationTargets) state.data.allocationTargets = { 'Real Estate': 0, 'Gold': 20, 'Equity': 50, 'Cash': 30 };
                         if (!state.data.budgets) state.data.budgets = {};
@@ -7473,16 +7250,7 @@
                 document.getElementById('app-content').style.display = 'none';
             }
         });
-        // --- SINKING FUNDS LOGIC ---
-        window.addSinkingFund = function () {
-            window.openModal('sinking-add');
-        };
-        window.deleteSinkingFund = async (id) => {
-            window.showConfirm("Delete this Sinking Fund?", "This cannot be undone.", async () => {
-                state.data.sinkingFunds = state.data.sinkingFunds.filter(f => f.id !== id);
-                await updateDb(); window.renderApp();
-            });
-        };
+
 
         // --- IMPULSE TEST LOGIC ---
         window.runImpulseTest = function () {
@@ -7647,25 +7415,17 @@
                 totalFixedSpend += bnplSpent;
             }
 
-            // Calc Sinking Funds Lock
-            const sinkingFunds = (state.data.sinkingFunds || []).map(f => {
-                const due = new Date(f.date);
-                const now = new Date();
-                const diffTime = Math.abs(due - now);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                const safeMonths = Math.max(1, Math.ceil(diffDays / 30));
+            // Calc Safe Spend (Macro-Bucket: Total Cash - Upcoming Bills)
+            const totalCashAvailable = state.data.accounts
+                .filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type))
+                .reduce((sum, a) => {
+                    let val = parseFloat(a.balance) || 0;
+                    if (a.currency && a.currency !== 'AED') val = val / rate;
+                    return sum + val;
+                }, 0);
 
-                const monthly = f.target / safeMonths;
-                return { ...f, monthly, months: safeMonths };
-            });
-            const totalSinkingLock = sinkingFunds.reduce((s, f) => {
-                let v = f.monthly;
-                if (f.currency === 'INR') v = v / rate;
-                return s + v;
-            }, 0);
-
-            // Calc Safe Spend (Discretionary Only - Sinking Locks)
-            const remainingDisc = Math.max(0, (totalDiscBudget - totalDiscSpend) - totalSinkingLock);
+            const upcomingBills = Math.max(0, totalFixedBudget - totalFixedSpend);
+            const remainingDisc = Math.max(0, totalCashAvailable - upcomingBills);
             const safeDaily = daysLeft > 0 ? (remainingDisc / daysLeft) : 0;
 
             // Separate lists
@@ -7718,37 +7478,30 @@
                 <!-- 0. BNPL ANALYZER (Tabby/Tamara) -->
                 ${window.renderBNPLAnalyzer ? window.renderBNPLAnalyzer() : ''}
 
-                <!-- 0.5 SINKING FUNDS MANAGER -->
-                <div class="bg-indigo-900 text-white p-6 rounded-[2.5rem] shadow-xl relative overflow-hidden text-left mb-6">
-                    <div class="flex justify-between items-center mb-4 relative z-10">
-                         <h4 class="text-[10px] font-black uppercase text-indigo-200 tracking-widest flex items-center gap-2">
-                            <i data-lucide="anchor" class="w-4 h-4"></i> Sinking Funds
-                        </h4>
-                        <button onclick="window.addSinkingFund()" class="bg-indigo-800 p-2 rounded-full hover:bg-indigo-700 text-[10px] font-bold uppercase transition-colors">
-                            + Add Fund
-                        </button>
-                    </div>
-                    <div class="relative z-10">
-                        <h2 class="text-3xl font-black text-indigo-300 mb-1 num-font">AED ${Math.round(totalSinkingLock).toLocaleString()}</h2>
-                        <p class="text-[10px] text-indigo-400 font-bold mb-4">Locked from Monthly Budget</p>
-                        
-                        <div class="space-y-3">
-                            ${sinkingFunds.map(f => `
-                            <div class="flex justify-between items-center bg-indigo-950/50 p-3 rounded-xl border border-indigo-800/50">
-                                <div>
-                                    <p class="font-bold text-xs text-indigo-100">${f.name}</p>
-                                    <p class="text-[9px] text-indigo-400">Due in ${f.months} months</p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="font-black text-xs text-indigo-300 num-font mb-0.5">${f.currency || 'AED'} ${Math.round(f.monthly)}/mo</p>
-                                     <button onclick="window.deleteSinkingFund('${f.id}')" class="text-[8px] text-indigo-500 hover:text-red-400 uppercase">Remove</button>
-                                </div>
-                            </div>`).join('') || '<p class="text-indigo-400/50 text-xs italic text-center py-2">No active sinking funds</p>'}
+                <!-- PROJECTS & TAGS LINK -->
+                <button onclick="window.openModal('tags')" class="w-full bg-pink-50 border border-pink-100 p-6 rounded-[2rem] hover:bg-pink-100 transition-colors flex items-center justify-between group">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-pink-200 p-3 rounded-full text-pink-600">
+                            <i data-lucide="hash" class="w-5 h-5"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="font-black text-pink-600">Projects & Tag Analytics</p>
+                            <p class="text-[10px] font-bold text-pink-400">View expenses categorized by #tags</p>
                         </div>
                     </div>
-                    <i data-lucide="piggy-bank" class="absolute -right-4 -bottom-4 text-white/5 w-32 h-32"></i>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-pink-400 group-hover:translate-x-1 transition-transform"></i>
+                </button>
+
+                <!-- SAFE TO SPEND GLOBALLY -->
+                <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-[9px] uppercase font-black text-emerald-500 mb-1 tracking-widest flex items-center"><i data-lucide="shield-check" class="w-3 h-3 mr-1"></i> Total Safe to Spend</p>
+                        <p class="text-[10px] font-bold text-slate-400">Total Liquid Cash excluding Goal Savings</p>
+                    </div>
+                    <div class="text-right">
+                        <p id="safe-to-spend-budget" class="font-black text-2xl text-slate-800">AED 0.00</p>
+                    </div>
                 </div>
-                
                 <!-- 1. VELOCITY CARD -->
                 <div class="bg-slate-900 text-white p-8 rounded-[3rem] shadow-xl text-center relative overflow-hidden">
                     <button onclick="window.runImpulseTest()" class="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors z-20" title="Impulse Test"><i data-lucide="timer" class="w-5 h-5"></i></button>
@@ -7881,6 +7634,139 @@
             }, "Confirm Payment");
         };
         window.settleInstallment = window.openBnplSettleModal;
+
+        // --- QUICK INVEST / LIQUIDATE ---
+        window.quickInvest = function(accId) {
+            const acc = state.data.accounts.find(a => a.id === accId);
+            if (!acc) return;
+
+            window.showConfirm("Invest Funds", `
+                <div class="space-y-4 text-left">
+                    <p class="text-xs text-slate-500 font-bold mb-4">Add capital to <span class="text-emerald-600">${acc.name}</span>.</p>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Investment Amount (${acc.currency})</label>
+                        <input type="number" id="quick-inv-amt" class="w-full p-4 bg-emerald-50 border-emerald-100 rounded-xl font-black text-2xl text-emerald-700 outline-none focus:border-emerald-500 text-center" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Paid From</label>
+                        <select id="quick-inv-source" class="w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-emerald-500">
+                            ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a =>
+                                `<option value="${a.id}">${a.name} (${window.toCurrency(a.balance)} ${a.currency})</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </div>
+            `, async () => {
+                const amt = parseFloat(document.getElementById('quick-inv-amt').value);
+                const sId = document.getElementById('quick-inv-source').value;
+                if (!amt || amt <= 0 || !sId) return window.showToast("Invalid Amount", "error");
+                
+                const sAcc = state.data.accounts.find(a => a.id === sId);
+                const tIdx = state.data.accounts.findIndex(a => a.id === accId);
+                if (!sAcc || tIdx === -1) return;
+
+                // Create Expense on Source
+                await window.saveTransaction({
+                    id: window.genId(),
+                    accountId: sAcc.id,
+                    type: 'transfer_out',
+                    amount: amt,
+                    currency: acc.currency, // Input is in dest currency
+                    category: 'Investment',
+                    note: `Transfer to ${acc.name}`,
+                    date: new Date().toISOString(),
+                    transferTo: acc.id
+                });
+
+                // Create Income on Dest
+                await window.saveTransaction({
+                    id: window.genId(),
+                    accountId: acc.id,
+                    type: 'transfer_in',
+                    amount: amt,
+                    currency: acc.currency,
+                    category: 'Investment',
+                    note: `Transfer from ${sAcc.name}`,
+                    date: new Date().toISOString(),
+                    transferFrom: sAcc.id
+                });
+
+                // Update Cost Basis (Opening Balance equivalent logic handled by transactions now, but explicitly track invested amount here if needed for legacy compatibility)
+                state.data.accounts[tIdx].originalCost = (state.data.accounts[tIdx].originalCost || 0) + amt;
+
+                window.renderApp();
+                window.renderAccountLedger(acc.id);
+                window.showToast("Investment Recorded Successfully", "success");
+            }, "Confirm Investment");
+        };
+
+        window.quickLiquidate = function(accId) {
+            const acc = state.data.accounts.find(a => a.id === accId);
+            if (!acc) return;
+
+            window.showConfirm("Liquidate Asset", `
+                <div class="space-y-4 text-left">
+                    <p class="text-xs text-slate-500 font-bold mb-4">Withdraw capital from <span class="text-indigo-600">${acc.name}</span>.</p>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Withdrawal Amount (${acc.currency})</label>
+                        <input type="number" id="quick-liq-amt" class="w-full p-4 bg-slate-50 border rounded-xl font-black text-2xl text-slate-700 outline-none focus:border-indigo-500 text-center" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Deposit To</label>
+                        <select id="quick-liq-dest" class="w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-indigo-500">
+                            ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a =>
+                                `<option value="${a.id}">${a.name} (${window.toCurrency(a.balance)} ${a.currency})</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </div>
+            `, async () => {
+                const amt = parseFloat(document.getElementById('quick-liq-amt').value);
+                const tId = document.getElementById('quick-liq-dest').value;
+                if (!amt || amt <= 0 || !tId) return window.showToast("Invalid Amount", "error");
+                
+                const tAcc = state.data.accounts.find(a => a.id === tId);
+                const sIdx = state.data.accounts.findIndex(a => a.id === accId);
+                if (!tAcc || sIdx === -1) return;
+
+                // Create Expense on Source (Asset)
+                await window.saveTransaction({
+                    id: window.genId(),
+                    accountId: acc.id,
+                    type: 'transfer_out',
+                    amount: amt,
+                    currency: acc.currency,
+                    category: 'Liquidation',
+                    note: `Withdrawal to ${tAcc.name}`,
+                    date: new Date().toISOString(),
+                    transferTo: tAcc.id
+                });
+
+                // Create Income on Dest (Bank)
+                await window.saveTransaction({
+                    id: window.genId(),
+                    accountId: tAcc.id,
+                    type: 'transfer_in',
+                    amount: amt,
+                    currency: acc.currency, // Sent in Asset's currency, auto-converted by ledger logic if Bank is different
+                    category: 'Liquidation',
+                    note: `Liquidation from ${acc.name}`,
+                    date: new Date().toISOString(),
+                    transferFrom: acc.id
+                });
+
+                // Reduce Cost Basis Proportionally
+                const currentBalance = parseFloat(acc.balance) || amt; // avoid div by 0
+                if (currentBalance > 0 && acc.originalCost) {
+                    const ratio = amt / currentBalance;
+                    state.data.accounts[sIdx].originalCost = Math.max(0, acc.originalCost - (acc.originalCost * ratio));
+                }
+
+                window.renderApp();
+                window.renderAccountLedger(acc.id);
+                window.showToast("Liquidation Recorded Successfully", "success");
+            }, "Confirm Liquidation");
+        };
 
         // Initialize (re-call just in case it was missed, though existing call should be fine)
         if (window.init) window.init();
