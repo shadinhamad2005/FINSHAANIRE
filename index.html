@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FI SHAANIRE v2.5 | Wealth Hub</title>
+    <title>FINSHAANIREE v2.5 | Wealth Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -347,7 +347,7 @@
         <div class="w-full max-w-md space-y-10 text-center">
             <div>
                 <div class="fs-logo-modern w-20 h-20 text-4xl mx-auto mb-6">FS</div>
-                <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 text-center">FI SHAANIRE</h1>
+                <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 text-center">FINSHAANIREE</h1>
                 <p class="text-slate-500 mt-2 font-medium text-center">Wealth Management and Budgeting.</p>
             </div>
             <div class="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 space-y-6 text-center">
@@ -434,7 +434,7 @@
             <div class="max-w-7xl mx-auto px-6 h-full flex justify-between items-center">
                 <div class="flex items-center space-x-3 text-left">
                     <div class="fs-logo-modern w-10 h-10 text-xl">FS</div>
-                    <span class="text-xl font-black tracking-tight logo-text">FI SHAANIRE</span>
+                    <span class="text-xl font-black tracking-tight logo-text">FINSHAANIREE</span>
                 </div>
                 <div class="flex items-center space-x-4">
                     <button onclick="window.openModal('auth')"
@@ -772,13 +772,28 @@
             // 3. Update State (In-Memory Only - Do not persist derived balance if possible, or persist for cache)
             // For this 'Financial Grade' refactor, we WILL persist it for performance, but ONLY satisfy it via this function.
             state.data.accounts.forEach(a => {
-                // Commodity/Mutual Fund accounts are VALUE based on price, not ledger sum usually.
-                // BUT, if they are tracked by units/cost, we should track COST basis here.
-                // For now, only apply strict ledger to Cash/Bank.
+                // For Cash accounts, balance is strictly the ledger sum.
                 if (['Bank Account', 'Cash', 'Savings'].includes(a.type)) {
                     a.balance = balances[a.id] / 100;
+                } else {
+                    // For Investments/Commodities, the balance must include the manual 'Initial Investment' (originalCost)
+                    // plus any net transfers from the ledger, matching the Ledger UI logic.
+                    a.balance = (a.originalCost || 0) + (balances[a.id] / 100);
                 }
             });
+
+            // 4. Fix BNPL Drift
+            if (state.data.debts) {
+                state.data.debts.forEach(d => {
+                    if (d.isBnpl || d.subtype === 'bnpl') {
+                        let rem = 0;
+                        (d.schedule || []).forEach(s => { if (!s.paid) rem += parseFloat(s.amount); });
+                        d.currentAmount = rem;
+                        d.amount = Number(rem).toFixed(2);
+                        if (rem < 0.1) d.settled = true;
+                    }
+                });
+            }
         };
 
         // ID Helper: Generates robust unique IDs
@@ -1174,7 +1189,7 @@
             if (document.getElementById('rate-display')) ut('rate-display', r.toFixed(2));
 
             let uae = 0, ind = 0, inv = 0;
-            accounts.forEach(a => { if (a.currency === 'AED') uae += a.balance; else ind += a.balance; if (!['Bank Account', 'Cash'].includes(a.type)) inv += (a.currency === 'AED' ? a.balance * r : a.balance); });
+            accounts.forEach(a => { if (a.currency === 'AED') uae += a.balance; else ind += a.balance; if (!['Bank Account', 'Cash', 'Savings'].includes(a.type)) inv += (a.currency === 'AED' ? a.balance * r : a.balance); });
             const pay = debts.filter(d => !d.settled && d.type === 'payable').reduce((s, d) => s + (Number(d.amount) * (d.currency === 'AED' ? r : 1)), 0), rec = debts.filter(d => !d.settled && d.type === 'receivable').reduce((s, d) => s + (Number(d.amount) * (d.currency === 'AED' ? r : 1)), 0);
 
             const net = (uae * r) + ind + rec - pay;
@@ -1212,7 +1227,7 @@
             // Calculate Safe To Spend (Liquid Cash - Goals Saved)
             let liquidCashAED = 0;
             accounts.forEach(a => {
-                if (['Bank Account', 'Cash'].includes(a.type)) {
+                if (['Bank Account', 'Cash', 'Savings'].includes(a.type)) {
                     liquidCashAED += (a.currency === 'AED' ? a.balance : a.balance / r);
                 }
             });
@@ -1390,7 +1405,7 @@
 
                 const item = { name: a.name, value: val, currency: a.currency, originalBalance: a.balance };
 
-                if (['Bank Account', 'Cash'].includes(a.type)) {
+                if (['Bank Account', 'Cash', 'Savings'].includes(a.type)) {
                     groups['Liquid Assets'].total += val;
                     groups['Liquid Assets'].items.push(item);
                 } else if (['Mutual Fund', 'Stock', 'Crypto'].includes(a.type)) {
@@ -2430,7 +2445,7 @@
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(16);
                 doc.setFont("helvetica", "bold");
-                doc.text("FI SHAANIRE Vault", 14, 20);
+                doc.text("FINSHAANIREE Vault", 14, 20);
                 
                 doc.setTextColor(16, 185, 129); // emerald-500
                 doc.setFontSize(10);
@@ -2517,7 +2532,7 @@
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(32);
                 doc.setFont("helvetica", "bold");
-                doc.text("FI SHAANIRE", 20, 120);
+                doc.text("FINSHAANIREE", 20, 120);
                 
                 doc.setTextColor(16, 185, 129);
                 doc.setFontSize(18);
@@ -2529,7 +2544,7 @@
                 const cycleText = `Reporting Cycle: ${lastYear.toISOString().split('T')[0]} to ${today.toISOString().split('T')[0]}`;
                 doc.text(cycleText, 20, 150);
                 
-                doc.text("Generated securely by the FI SHAANIRE Wealth Engine.", 20, 280);
+                doc.text("Generated securely by the FINSHAANIREE Wealth Engine.", 20, 280);
                 
                 // PAGE 2: AI Summary
                 doc.addPage();
@@ -2959,7 +2974,7 @@
                                     <label class="text-[9px] font-black uppercase text-slate-400 ml-3 mb-1 block">From Account (Source)</label>
                                     <select id="sw-src" class="w-full p-4 border rounded-xl font-bold text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500">
                                         <option value="">Select Source...</option>
-                                        ${state.data.accounts.filter(a => ['Bank Account', 'Cash'].includes(a.type)).map(a => `<option value="${a.id}">${a.name} (Avl: ${a.balance})</option>`).join('')}
+                                        ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => `<option value="${a.id}">${a.name} (Avl: ${a.balance})</option>`).join('')}
                                     </select>
                                 </div>
                                 <div class="flex justify-center text-slate-300"><i data-lucide="arrow-down" class="w-6 h-6"></i></div>
@@ -3084,7 +3099,7 @@
 
         window.renderZakatPaymentModal = function () {
             const zakatAmount = window.currentZakatDue ? Math.round(window.currentZakatDue) : 0;
-            const validAccounts = state.data.accounts.filter(a => ['Bank Account', 'Cash'].includes(a.type));
+            const validAccounts = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type));
             
             let accountOptions = validAccounts.map(a => `<option value="${a.id}">${a.name} (${a.currency} ${a.balance.toLocaleString()})</option>`).join('');
 
@@ -4597,7 +4612,7 @@
 
                     if (dueItems.length > 0) {
                         const summary = dueItems.map(i => `• ${i.type} to ${i.name}: ${i.amount} ${i.currency}`).join('\\n');
-                        const msgBody = `📅 *Payment Reminder: Due Today* (${todayStr})\\n\\n${summary}\\n\\nCheck FI SHAANIRE for details.`;
+                        const msgBody = `📅 *Payment Reminder: Due Today* (${todayStr})\\n\\n${summary}\\n\\nCheck FINSHAANIREE for details.`;
                         const cleanPhone = myPhone.replace(/[^0-9]/g, '');
 
                         try {
@@ -5419,7 +5434,7 @@
             doc.setFontSize(10);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(100);
-            doc.text(`Generated on ${new Date().toLocaleDateString()} | FI SHAANIRE Wealth Hub`, 105, 26, null, null, "center");
+            doc.text(`Generated on ${new Date().toLocaleDateString()} | FINSHAANIREE Wealth Hub`, 105, 26, null, null, "center");
 
             // -- SUMMARY --
             let totalAssets = 0, totalLiabilities = 0;
@@ -5991,7 +6006,7 @@
 
                 const r = state.data.settings.rate;
                 const liquidAssets = state.data.accounts
-                    .filter(a => ['Bank Account', 'Cash'].includes(a.type))
+                    .filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type))
                     .reduce((s, a) => s + (a.currency === 'AED' ? a.balance : a.balance / r), 0);
 
                 const now = new Date();
@@ -6685,7 +6700,7 @@
 
             // --- METRICS CALCULATION ---
             const r = state.data.settings.rate;
-            const isInv = ['Investment', 'Mutual Fund', 'Commodity'].includes(a.type);
+            const isInv = !['Bank Account', 'Cash', 'Savings'].includes(a.type);
 
             // 1. Current Value (in INR for uniform display, or native?)
             // Let's show Native + INR equivalent
@@ -6823,10 +6838,12 @@
 
                     acc.originalCost = cost;
                     await updateDb();
+                    window.recalculateBalances(); // Instantly apply new base value
                     window.showToast("Initial Investment Updated!", "success");
 
                     // Refresh View
                     window.viewAccountLedger(id);
+                    window.renderApp();
                 },
                 'number',
                 acc.originalCost || '' // Pre-fill
@@ -7235,6 +7252,7 @@
                             window.fetchMetalsRate();
                             window.checkSubscriptions();
                             await window.checkBudgetRollover();
+                            window.recalculateBalances(); // Always self-heal ledger balances on load
                             window.renderApp();
                         } catch (e) {
                             console.error("Init Error", e);
@@ -7691,8 +7709,8 @@
                     transferFrom: sAcc.id
                 });
 
-                // Update Cost Basis (Opening Balance equivalent logic handled by transactions now, but explicitly track invested amount here if needed for legacy compatibility)
-                state.data.accounts[tIdx].originalCost = (state.data.accounts[tIdx].originalCost || 0) + amt;
+                // Note: originalCost is strictly for the manual 'Initial Investment' opening balance now.
+                // The ledger will automatically sum this 'transfer_in' during recalculateBalances.
 
                 window.renderApp();
                 window.renderAccountLedger(acc.id);
@@ -7755,12 +7773,8 @@
                     transferFrom: acc.id
                 });
 
-                // Reduce Cost Basis Proportionally
-                const currentBalance = parseFloat(acc.balance) || amt; // avoid div by 0
-                if (currentBalance > 0 && acc.originalCost) {
-                    const ratio = amt / currentBalance;
-                    state.data.accounts[sIdx].originalCost = Math.max(0, acc.originalCost - (acc.originalCost * ratio));
-                }
+                // Note: originalCost is strictly for the manual 'Initial Investment' opening balance now.
+                // The ledger will automatically sum this 'transfer_out' during recalculateBalances.
 
                 window.renderApp();
                 window.renderAccountLedger(acc.id);
