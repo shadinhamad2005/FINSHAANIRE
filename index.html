@@ -14,7 +14,7 @@
         window.onerror = function (msg, url, line, col, error) {
             const box = document.createElement('div');
             box.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.9);color:white;padding:20px;z-index:9999;font-weight:bold;text-align:left;overflow:auto;display:flex;flex-direction:column;justify-content:center;align-items:center;';
-            box.innerHTML = `<div style="background:white;color:black;padding:20px;border-radius:10px;max-width:90%;"><h3>⚠️ Critical Error</h3><p>${msg}</p><p>Line: ${line} Col: ${col}</p><pre style="background:#f0f0f0;padding:10px;border-radius:5px;margin-top:10px;text-align:left;overflow-x:auto;">${error ? error.stack : ''}</pre><button onclick="window.location.reload()" style="background:#10b981;color:white;padding:10px 20px;margin-top:20px;border-radius:5px;font-weight:bold;">Reload App</button></div>`;
+            box.innerHTML = `<div style="background:white;color:black;padding:20px;border-radius:10px;max-width:90%;"><h3>⚠? Critical Error</h3><p>${msg}</p><p>Line: ${line} Col: ${col}</p><pre style="background:#f0f0f0;padding:10px;border-radius:5px;margin-top:10px;text-align:left;overflow-x:auto;">${error ? error.stack : ''}</pre><button onclick="window.location.reload()" style="background:#10b981;color:white;padding:10px 20px;margin-top:20px;border-radius:5px;font-weight:bold;">Reload App</button></div>`;
             document.body.appendChild(box);
             return false;
         };
@@ -554,9 +554,13 @@
                             <i data-lucide="users" class="w-6 h-6 mb-2 text-amber-500"></i>
                             <span class="text-[10px] font-black uppercase text-[#8b1a30]">Debts</span>
                         </button>
-                        <button onclick="window.openModal('subscriptions')" class="col-span-2 flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-50 hover:bg-slate-50 active:scale-95 transition-all">
+                        <button onclick="window.openModal('subscriptions')" class="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-slate-50 hover:bg-slate-50 active:scale-95 transition-all">
                             <i data-lucide="refresh-cw" class="w-6 h-6 mb-2 text-indigo-500"></i>
-                            <span class="text-[10px] font-black uppercase text-[#8b1a30]">Recurring Auto-Pay</span>
+                            <span class="text-[10px] font-black uppercase text-[#8b1a30]">Recurring</span>
+                        </button>
+                        <button onclick="window.openModal('salary')" class="flex flex-col items-center justify-center p-6 rounded-3xl bg-emerald-500 text-white shadow-lg active:scale-95 transition-all">
+                            <i data-lucide="coins" class="w-6 h-6 mb-2 text-white"></i>
+                            <span class="text-[10px] font-black uppercase text-white">Salary Day</span>
                         </button>
                     </div>
                 </div>
@@ -2901,6 +2905,7 @@
 
                 case 'transaction': t.innerText = 'Data Movement'; c.innerHTML = `
                     <div class="max-w-md mx-auto bg-white p-10 rounded-[3rem] border shadow-xl text-center">
+                        <div id="tx-warning" class="hidden mb-4 p-3 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-200"></div>
                         <div class="grid grid-cols-2 gap-4 mb-6 text-center">
                             <button id="be" onclick="window.setT('expense')" class="p-4 rounded-xl border-4 border-emerald-500 bg-emerald-50 text-emerald-700 font-black text-xs uppercase">Expense</button>
                             <button id="bi" onclick="window.setT('income')" class="p-4 rounded-xl border-4 border-slate-100 text-slate-300 font-black text-xs uppercase">Income</button>
@@ -2908,11 +2913,10 @@
                         <input type="hidden" id="tt" value="expense">
                         <select id="ta" class="w-full p-4 border rounded-xl font-bold mb-4 text-center">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
                         <div class="grid grid-cols-2 gap-4 mb-4 text-center">
-                            <select id="tc" class="p-4 border rounded-xl font-bold text-sm text-center">${state.data.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}</select>
-                            <input type="number" id="tam" placeholder="0.00" class="p-4 border rounded-xl font-black text-center focus:border-emerald-500">
+                            <select id="tc" onchange="window.checkBudgetWarning()" class="p-4 border rounded-xl font-bold text-sm text-center">${state.data.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}</select>
+                            <input type="number" id="tam" placeholder="0.00" oninput="window.checkBudgetWarning()" class="p-4 border rounded-xl font-black text-center focus:border-emerald-500">
                         </div>
-                        <input type="text" id="tn" placeholder="Note" class="w-full p-4 border rounded-xl mb-4 outline-none focus:border-emerald-500">
-                        <input type="text" id="ttags" placeholder="Tags (e.g. #Trip #Food)" class="w-full p-4 border rounded-xl mb-6 outline-none bg-slate-50 text-emerald-600 font-bold text-sm">
+                        <input type="text" id="tn" placeholder="Note" class="w-full p-4 border rounded-xl mb-6 outline-none focus:border-emerald-500">
                         <button id="btn-save-tx" onclick="window.saveTransaction()" class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black uppercase shadow-lg text-center">Authorize entry</button>
                     </div>`; break;
                 case 'transfer': t.innerText = 'Transfer & Invest'; c.innerHTML = `
@@ -2936,7 +2940,15 @@
 
                         <input type="number" id="tamt" oninput="window.calcRemit(this.value)" class="w-full p-6 border-2 rounded-2xl font-black text-3xl text-center mb-4 text-center outline-none focus:border-emerald-500" placeholder="Sending Amount">
                         <div id="remit-preview" class="text-xs font-black text-emerald-600 mb-6 h-4 text-center"></div>
-                        <input type="text" id="trn" placeholder="Transfer Node / Description" class="w-full p-4 border rounded-xl mb-6 text-center outline-none focus:border-emerald-500">
+                        <input type="text" id="trn" placeholder="Transfer Node / Description" class="w-full p-4 border rounded-xl mb-4 text-center outline-none focus:border-emerald-500">
+                        <div class="mb-6 relative">
+                            <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 text-center">Budget Category (Optional)</label>
+                            <select id="tcat" class="w-full p-4 border rounded-xl font-bold text-center text-center outline-none focus:border-emerald-500 bg-emerald-50/50">
+                                <option value="">-- None (Just a Transfer) --</option>
+                                ${state.data.expenseCategories.map(c => `<option value="${c}">${c}</option>`).join('')}
+                            </select>
+                            <p class="text-[9px] text-slate-400 font-bold mt-2 text-center leading-tight px-4">If you select an Investment category, this transfer will count against your Monthly Budget.</p>
+                        </div>
                         <div id="transfer-error-msg" class="hidden text-red-500 text-xs font-bold mt-2 mb-2"></div>
                         <button id="btn-do-transfer" onclick="window.doTransfer()" class="w-full bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase shadow-xl text-center">Authorize Transfer</button>
                         <p class="mt-4 text-[10px] text-slate-400 font-bold">Use this to move funds to Investment Accounts or Remit.</p>
@@ -2952,6 +2964,39 @@
                 case 'calculator': t.innerText = 'Compound Projector'; c.innerHTML = window.renderCalculator(); break;
                 case 'subscriptions': t.innerText = 'Recurring Auto-Pay'; c.innerHTML = window.renderSubscriptionsUI(); break;
                 case 'import': t.innerText = 'Import Statement'; c.innerHTML = window.renderImportUI(); break;
+                case 'salary': t.innerText = 'Process Salary Day'; c.innerHTML = `
+                    <div class="max-w-md mx-auto bg-white p-10 rounded-[3rem] border shadow-xl text-center">
+                        <h3 class="text-xl font-black text-slate-900 mb-4">Salary Allocation</h3>
+                        <div class="mb-4">
+                            <label class="text-[10px] font-black uppercase text-slate-400 block mb-1 text-left ml-2">Total Salary Amount</label>
+                            <input type="number" id="sal-amount" placeholder="0.00" class="w-full p-4 border rounded-xl font-black text-center focus:border-emerald-500" oninput="window.calcSalAlloc()">
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mb-4">
+                            <div>
+                                <label class="text-[9px] font-bold uppercase text-slate-400 block mb-1">Savings (%)</label>
+                                <input type="number" id="sal-sav-pct" value="20" class="w-full p-2 border rounded-lg text-center" oninput="window.calcSalAlloc()">
+                                <p id="sal-sav-val" class="text-xs font-bold text-emerald-600 mt-1">0.00</p>
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-bold uppercase text-slate-400 block mb-1">Invest (%)</label>
+                                <input type="number" id="sal-inv-pct" value="30" class="w-full p-2 border rounded-lg text-center" oninput="window.calcSalAlloc()">
+                                <p id="sal-inv-val" class="text-xs font-bold text-indigo-600 mt-1">0.00</p>
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-bold uppercase text-slate-400 block mb-1">Expense (%)</label>
+                                <input type="number" id="sal-exp-pct" value="50" class="w-full p-2 border rounded-lg text-center" oninput="window.calcSalAlloc()">
+                                <p id="sal-exp-val" class="text-xs font-bold text-rose-600 mt-1">0.00</p>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                             <label class="text-[10px] font-black uppercase text-slate-400 block mb-1 text-left ml-2">Receiving Account</label>
+                             <select id="sal-acc" class="w-full p-4 border rounded-xl font-bold text-center">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
+                        </div>
+                        <button onclick="window.processSalary()" class="w-full bg-emerald-500 text-white p-4 rounded-2xl font-black uppercase shadow-lg mb-2">Execute Allocations</button>
+                        <button onclick="window.printSalary()" class="w-full bg-slate-100 text-slate-600 p-4 rounded-2xl font-bold uppercase mt-2"><i data-lucide="printer" class="inline w-4 h-4 mr-1"></i> Print Summary</button>
+                    </div>`; 
+                    setTimeout(() => lucide.createIcons(), 50);
+                    break;
                 // NEW FEATURES
                 case 'remittance': t.innerText = 'Arbitrage Tracker'; c.innerHTML = window.renderRemittance(); setTimeout(window.renderRemitChart, 300); break;
                 case 'zakat': t.innerText = 'Zakat Calculator'; c.innerHTML = window.renderZakatCalculator(); break;
@@ -4285,7 +4330,7 @@
             if (src === tgt) { window.showToast("Source and Target cannot be the same.", "error"); return; }
 
             window.showConfirm(
-                "⚠️ MERGE CATEGORIES?",
+                "⚠? MERGE CATEGORIES?",
                 `This will move ALL transactions from '${src}' to '${tgt}'.\n\n'${src}' will be permanently deleted.`,
                 async () => {
                     // 1. Update Transactions
@@ -4318,7 +4363,7 @@
 
         window.resetData = async function () {
             window.showConfirm(
-                "⚠️ DANGER ZONE ⚠️",
+                "⚠? DANGER ZONE ⚠?",
                 "This will permanently delete ALL accounts, transactions, and settings.\n\nAre you sure you want to reset everything?",
                 async () => {
                     try {
@@ -4672,7 +4717,7 @@
 
                         if (endingSoon.length > 0) {
                             const summary = endingSoon.map(s => `• ${s.name} (Ends: ${s.freeTrialEndDate})`).join('\\n');
-                            const msgBody = `⚠️ *Free Trial Alert*\\n\\nThe following trials are ending soon:\\n${summary}\\n\\nCancel now if unwanted!`;
+                            const msgBody = `⚠? *Free Trial Alert*\\n\\nThe following trials are ending soon:\\n${summary}\\n\\nCancel now if unwanted!`;
                             const cleanPhone = state.data.settings.myPhone.replace(/[^0-9]/g, '');
 
                             try {
@@ -5045,7 +5090,7 @@
             };
 
             const renderPerson = (p) => {
-                const stars = "⭐".repeat(Math.round(p.trust / 20));
+                const stars = "?".repeat(Math.round(p.trust / 20));
                 const safeId = p.name.replace(/[^a-zA-Z0-9]/g, '_');
 
                 // Net Status
@@ -5793,7 +5838,7 @@
                 res.innerHTML = `<span class="text-emerald-500 block">✅ AED ${Math.round(installment)} /mo</span> <span class="text-[8px] uppercase">Safe over ${split} mo</span>`;
                 res.className = "w-full p-2 bg-emerald-50 border border-emerald-100 rounded-xl font-bold text-xs text-center";
             } else {
-                res.innerHTML = `<span class="text-red-500 block">❌ AED ${Math.round(installment)} /mo</span> <span class="text-[8px] uppercase">Too Risky</span>`;
+                res.innerHTML = `<span class="text-red-500 block">? AED ${Math.round(installment)} /mo</span> <span class="text-[8px] uppercase">Too Risky</span>`;
                 res.className = "w-full p-2 bg-red-50 border border-red-100 rounded-xl font-bold text-xs text-center";
             }
 
@@ -5801,7 +5846,7 @@
             const warn = document.getElementById('bnpl-warning');
             if (warn) {
                 if (split > 4) {
-                    warn.innerText = "⚠️ Caution: Ensure 0% Interest. Banks often charge processing fees for 12 months.";
+                    warn.innerText = "⚠? Caution: Ensure 0% Interest. Banks often charge processing fees for 12 months.";
                     warn.className = "text-[9px] text-amber-500 mt-3 italic font-bold";
                 } else {
                     warn.innerText = "\"Avoid plans> 4 months to pay zero interest.\"";
@@ -6024,7 +6069,7 @@
 
                 if (runwayAfterLoan < 1) {
                     window.showConfirm(
-                        `⚠️ High Risk Warning`,
+                        `⚠? High Risk Warning`,
                         `Lending leaves only ~${runwayAfterLoan.toFixed(1)} months of runway.Proceed ? `,
                         () => window.finalizeCommitDebt(),
                         "Proceed",
@@ -6319,8 +6364,6 @@
                 const type = document.getElementById('tt')?.value;
                 const cat = document.getElementById('tc')?.value;
                 const note = document.getElementById('tn')?.value;
-                const tagsVal = document.getElementById('ttags')?.value || '';
-                const tags = tagsVal.split(' ').filter(t => t.startsWith('#'));
 
                 if (!aId || isNaN(amt)) return;
 
@@ -6359,7 +6402,6 @@
                     type,
                     category: cat,
                     note,
-                    tags,
                     date: new Date().toISOString(),
                     exchangeRate: rateSnapshot
                 };
@@ -6384,6 +6426,7 @@
 
         window.doTransfer = async function () {
             const sId = document.getElementById('ts').value, tId = document.getElementById('ttg').value, val = parseFloat(document.getElementById('tamt').value), n = document.getElementById('trn').value;
+            const tCat = (document.getElementById('tcat') ? document.getElementById('tcat').value : '') || 'Transfer';
             if (!sId || !tId || isNaN(val)) return;
 
             // Security: Prevent negative amounts
@@ -6435,10 +6478,10 @@
             const rateSnapshot = state.data.settings.rate;
 
             state.data.transactions.push({
-                id: window.genId(), accountId: sId, amount: window.toCurrency(val), type: 'transfer_out', category: 'Transfer', note: `To ${tAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
+                id: window.genId(), accountId: sId, amount: window.toCurrency(val), type: 'transfer_out', category: tCat, note: `To ${tAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
             });
             state.data.transactions.push({
-                id: window.genId(), accountId: tId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: 'Transfer', note: `From ${sAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
+                id: window.genId(), accountId: tId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: tCat, note: `From ${sAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
             });
 
             window.recalculateBalances();
@@ -6746,11 +6789,12 @@
 
                     <!--ACTIONS -->
                     ${isInv ? `
-                    <div class="grid grid-cols-2 gap-4 mb-4">
-                         <button onclick="window.quickInvest('${id}')" class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-600 transition-all shadow-md">+ Invest More</button>
-                         <button onclick="window.quickLiquidate('${id}')" class="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-200 transition-all">- Liquidate</button>
-                    </div>` : ''}
-                    <div class="flex justify-center space-x-4">
+                      <div class="grid grid-cols-3 gap-2 mb-4">
+                           <button onclick="window.quickInvest('${id}')" class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-emerald-600 transition-all shadow-md">+ Invest More</button>
+                           <button onclick="window.quickLiquidate('${id}')" class="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-200 transition-all">- Liquidate</button>
+                           <button onclick="window.openModal('subscriptions')" class="w-full py-4 bg-indigo-500 text-white rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-indigo-600 transition-all shadow-md"><i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1"></i> Auto-SIP</button>
+                      </div>` : ''}
+                      <div class="flex justify-center space-x-4">
                          ${isInv ? `<button onclick="window.editOriginalCost('${id}')" class="px-6 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">Set Initial Investment</button>` : ''}
                          <button onclick="window.delAccount('${id}')" class="px-6 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-xs uppercase hover:bg-red-100 transition-all">Delete Asset</button>
                     </div>
@@ -7074,7 +7118,7 @@
 
         window.deleteTransaction = async (id) => {
             window.showConfirm(
-                "⚠️ DELETE TRANSACTION?",
+                "⚠? DELETE TRANSACTION?",
                 "This will permanently remove the record and update your balances.",
                 async () => {
                     try {
@@ -7141,7 +7185,7 @@
 
             // Block complex edits
             if (tx.type.includes('transfer') || ['Settlement', 'Lending', 'Borrowing'].includes(tx.category) || tx.accountId === 'virtual_writeoff') {
-                alert("⚠️ Complex Entry Locked\n\nTransfers, Debt Settlements, and Write-offs cannot be edited directly because they affect multiple records.\n\nPlease DELETE this entry and create a new one.");
+                alert("⚠? Complex Entry Locked\n\nTransfers, Debt Settlements, and Write-offs cannot be edited directly because they affect multiple records.\n\nPlease DELETE this entry and create a new one.");
                 return;
             }
 
@@ -7318,7 +7362,7 @@
                 const years = (recoveryMonths / 12).toFixed(1);
 
                 window.showConfirm(
-                    "⏳ TIME TO RECOVERY",
+                    "? TIME TO RECOVERY",
                     `To earn back the cost of **AED ${price.toLocaleString()}** passively, it will take your portfolio:\n\n📅 **${recoveryMonths.toFixed(1)} MONTHS**\n\n(Based on avg growth of AED ${Math.round(monthlyPassive)}/mo).\n\nIs it worth ${Math.round(recoveryMonths * 30)} days of freedom?`,
                     () => { } // No action on OK, just info
                 );
@@ -7419,7 +7463,7 @@
 
             if (bnplLimit > 0) {
                 items.push({
-                    cat: 'BNPL Commitments 🛍️',
+                    cat: 'BNPL Commitments ??',
                     b: bnplLimit,
                     rollover: 0,
                     totalLimit: bnplLimit,
@@ -7785,7 +7829,639 @@
         // Initialize (re-call just in case it was missed, though existing call should be fine)
         if (window.init) window.init();
 
+        // --- NEW SALARY AND BUDGET FEATURES ---
+        window.calcSalAlloc = function () {
+            const amt = parseFloat(document.getElementById('sal-amount').value) || 0;
+            const savPct = parseFloat(document.getElementById('sal-sav-pct').value) || 0;
+            const invPct = parseFloat(document.getElementById('sal-inv-pct').value) || 0;
+            const expPct = parseFloat(document.getElementById('sal-exp-pct').value) || 0;
+
+            document.getElementById('sal-sav-val').innerText = (amt * (savPct/100)).toFixed(2);
+            document.getElementById('sal-inv-val').innerText = (amt * (invPct/100)).toFixed(2);
+            document.getElementById('sal-exp-val').innerText = (amt * (expPct/100)).toFixed(2);
+        };
+
+        window.processSalary = async function () {
+            const amt = parseFloat(document.getElementById('sal-amount').value) || 0;
+            const aId = document.getElementById('sal-acc').value;
+            if (amt <= 0 || !aId) {
+                window.showToast("Please enter a valid amount and select account", "error");
+                return;
+            }
+            
+            const savAmt = parseFloat(document.getElementById('sal-sav-val').innerText);
+            const invAmt = parseFloat(document.getElementById('sal-inv-val').innerText);
+            const expAmt = parseFloat(document.getElementById('sal-exp-val').innerText);
+
+            const rateSnapshot = state.data.settings.rate;
+            const date = new Date().toISOString();
+
+            // 1. Income transaction (Salary)
+            state.data.transactions.push({
+                id: window.genId(), accountId: aId, amount: window.toCurrency(amt), type: 'income', category: 'Salary', note: `Salary Processed (Sav: ${savAmt}, Inv: ${invAmt}, Exp: ${expAmt})`, date, exchangeRate: rateSnapshot
+            });
+
+            window.showToast("Salary Processed & Logged!", "success");
+            window.recalculateBalances();
+            await window.updateDb();
+            window.renderApp();
+            window.closeModal();
+        };
+
+        window.printSalary = function () {
+            window.print();
+        };
+
+        window.checkBudgetWarning = function () {
+            const typeEl = document.getElementById('tt');
+            const warningEl = document.getElementById('tx-warning');
+            if (!typeEl || !warningEl) return;
+            
+            const type = typeEl.value;
+            if (type !== 'expense') {
+                warningEl.classList.add('hidden');
+                return;
+            }
+            const cat = document.getElementById('tc').value;
+            const amt = parseFloat(document.getElementById('tam').value) || 0;
+            
+            // Calculate current spending for this category this month
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+            
+            let spent = 0;
+            state.data.transactions.forEach(t => {
+                if (t.type === 'expense' && t.category === cat && t.date >= startOfMonth) {
+                    spent += parseFloat(t.amount);
+                }
+            });
+
+            const budget = state.data.budgets ? (state.data.budgets[cat] || 0) : 0;
+            
+            if (budget > 0 && (spent + amt) > budget) {
+                warningEl.innerText = `WARNING: This expense exceeds your monthly ${cat} budget by ${((spent + amt) - budget).toFixed(2)}`;
+                warningEl.classList.remove('hidden');
+            } else {
+                warningEl.classList.add('hidden');
+            }
+        };
+
+
+// --- NEW BUDGET WIZARD OVERRIDE ---
+window.startBudgetWizard = function (step = 1) {
+    window.budgetWizardState = window.budgetWizardState || {
+        expectedSalary: state.data.settings.expectedSalary || 0,
+        tempBudgets: { ...state.data.budgets }
+    };
+
+    let content = '';
+    
+    if (step === 1) {
+        content = `
+            <div class="max-w-md mx-auto bg-white/70 backdrop-blur-xl p-10 rounded-[3rem] border shadow-2xl text-center">
+                <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <i data-lucide="wallet" class="w-10 h-10 text-emerald-500"></i>
+                </div>
+                <h2 class="text-2xl font-black text-slate-900 mb-2">Monthly Income</h2>
+                <p class="text-xs font-bold text-slate-500 mb-8">What is your expected total income for this month?</p>
+                
+                <div class="mb-8">
+                    <input type="number" id="wizard-salary" value="${window.budgetWizardState.expectedSalary}" class="w-full text-center text-4xl font-black text-emerald-600 bg-transparent border-b-4 border-slate-200 focus:border-emerald-500 outline-none pb-4 transition-colors" placeholder="0.00">
+                    <p class="text-[10px] font-black uppercase text-slate-400 mt-2">Base Currency</p>
+                </div>
+                
+                <button onclick="window.budgetWizardState.expectedSalary = parseFloat(document.getElementById('wizard-salary').value) || 0; window.startBudgetWizard(2)" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest py-4 rounded-2xl transition-all shadow-lg">Next: Categories <i data-lucide="arrow-right" class="w-4 h-4 inline ml-2"></i></button>
+            </div>
+        `;
+    } 
+    else if (step === 2) {
+        const renderCat = (c, type) => `
+            <div class="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-2 group">
+                <span class="font-black text-slate-700 text-sm">${c} <span class="text-[9px] text-slate-400 uppercase tracking-widest ml-2">${type}</span></span>
+                <button onclick="window.delWizardCategory('${c}', '${type}')" class="text-rose-400 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+        `;
+        
+        content = `
+            <div class="max-w-md mx-auto bg-white/70 backdrop-blur-xl p-10 rounded-[3rem] border shadow-2xl text-center h-[80vh] flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <button onclick="window.startBudgetWizard(1)" class="text-slate-400 hover:text-slate-600"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                    <h2 class="text-xl font-black text-slate-900">Manage Categories</h2>
+                    <div class="w-5"></div>
+                </div>
+                
+                <div class="flex-1 overflow-auto text-left mb-6 pr-2">
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Expenses & Investments</h3>
+                    ${state.data.expenseCategories.map(c => renderCat(c, 'Expense')).join('')}
+                    ${state.data.incomeCategories.map(c => renderCat(c, 'Income')).join('')}
+                </div>
+                
+                <div class="bg-slate-50 p-4 rounded-2xl border flex gap-2 mb-6">
+                    <input type="text" id="wizard-new-cat" class="flex-1 bg-transparent font-bold text-sm outline-none" placeholder="New Category...">
+                    <select id="wizard-new-type" class="bg-white border rounded-xl px-2 text-xs font-bold text-slate-600 outline-none">
+                        <option value="expenseCategories">Expense</option>
+                        <option value="incomeCategories">Income</option>
+                    </select>
+                    <button onclick="window.addWizardCategory()" class="bg-emerald-500 text-white p-3 rounded-xl hover:bg-emerald-600"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                </div>
+                
+                <button onclick="window.startBudgetWizard(3)" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-widest py-4 rounded-2xl transition-all shadow-lg">Next: Allocation <i data-lucide="arrow-right" class="w-4 h-4 inline ml-2"></i></button>
+            </div>
+        `;
+    }
+    else if (step === 3) {
+        content = `
+            <div class="max-w-xl mx-auto bg-white/70 backdrop-blur-xl p-10 rounded-[3rem] border shadow-2xl h-[85vh] flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <button onclick="window.startBudgetWizard(2)" class="text-slate-400 hover:text-slate-600"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                    <h2 class="text-xl font-black text-slate-900">Allocate Funds</h2>
+                    <div class="w-5"></div>
+                </div>
+                
+                <div class="bg-slate-900 text-white p-6 rounded-3xl mb-6 shadow-xl relative overflow-hidden flex-shrink-0">
+                    <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 relative z-10">Unallocated Left</p>
+                    <h3 id="wizard-unallocated" class="text-3xl font-black text-emerald-400 num-font relative z-10">AED ${window.budgetWizardState.expectedSalary.toLocaleString()}</h3>
+                    <div class="absolute right-[-20px] bottom-[-20px] opacity-10"><i data-lucide="pie-chart" class="w-32 h-32"></i></div>
+                    
+                    <div class="w-full bg-slate-800 rounded-full h-2 mt-4 relative z-10">
+                        <div id="wizard-progress" class="bg-emerald-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="flex-1 overflow-auto pr-2 space-y-4">
+                    ${state.data.expenseCategories.map(cat => {
+                        const val = window.budgetWizardState.tempBudgets[cat] || 0;
+                        return `
+                        <div class="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border">
+                            <span class="w-1/3 text-xs font-black text-slate-700 uppercase truncate">${cat}</span>
+                            <div class="w-2/3 flex items-center bg-white border rounded-xl overflow-hidden focus-within:border-emerald-500 transition-colors">
+                                <span class="pl-4 text-[10px] font-black text-slate-400">AED</span>
+                                <input type="number" data-cat="${cat}" value="${val}" class="wizard-budget-input w-full p-3 font-black text-right outline-none text-slate-700" oninput="window.calcWizardUnallocated()">
+                            </div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+                
+                <button onclick="window.saveBudgetWizard()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-widest py-4 rounded-2xl transition-all shadow-lg mt-6 flex-shrink-0">Save & Finish <i data-lucide="check" class="w-4 h-4 inline ml-2"></i></button>
+            </div>
+        `;
+        
+        setTimeout(window.calcWizardUnallocated, 50);
+    }
+    
+    document.getElementById('modal-content').innerHTML = content;
+    lucide.createIcons();
+};
+
+window.addWizardCategory = async function() {
+    const val = document.getElementById('wizard-new-cat').value.trim();
+    const type = document.getElementById('wizard-new-type').value; 
+    if (!val || state.data[type].includes(val)) return;
+    state.data[type].push(val);
+    await window.updateDb();
+    window.startBudgetWizard(2);
+};
+
+window.delWizardCategory = async function(cat, typeStr) {
+    const type = typeStr === 'Expense' ? 'expenseCategories' : 'incomeCategories';
+    state.data[type] = state.data[type].filter(c => c !== cat);
+    await window.updateDb();
+    window.startBudgetWizard(2);
+};
+
+window.calcWizardUnallocated = function() {
+    const total = window.budgetWizardState.expectedSalary;
+    let allocated = 0;
+    document.querySelectorAll('.wizard-budget-input').forEach(input => {
+        allocated += parseFloat(input.value) || 0;
+    });
+    
+    const unallocated = total - allocated;
+    const el = document.getElementById('wizard-unallocated');
+    const bar = document.getElementById('wizard-progress');
+    
+    if (el) {
+        el.innerText = 'AED ' + unallocated.toLocaleString();
+        el.className = unallocated < 0 ? 'text-3xl font-black text-rose-400 num-font relative z-10' : 'text-3xl font-black text-emerald-400 num-font relative z-10';
+    }
+    
+    if (bar) {
+        const pct = total > 0 ? (allocated / total) * 100 : 0;
+        bar.style.width = Math.min(100, pct) + '%';
+        bar.className = unallocated < 0 ? 'bg-rose-500 h-2 rounded-full transition-all' : 'bg-emerald-500 h-2 rounded-full transition-all';
+    }
+};
+
+window.saveBudgetWizard = async function() {
+    state.data.settings.expectedSalary = window.budgetWizardState.expectedSalary;
+    document.querySelectorAll('.wizard-budget-input').forEach(input => {
+        const cat = input.getAttribute('data-cat');
+        const val = parseFloat(input.value) || 0;
+        state.data.budgets[cat] = val;
+    });
+    await window.updateDb();
+    window.showToast("Budget successfully saved!", "success");
+    window.budgetWizardState = null; 
+    window.openModal('budget'); 
+};
+
+window.renderBudgetUI = function () {
+    const expectedSalary = state.data.settings.expectedSalary;
+    
+    if (!expectedSalary || Object.keys(state.data.budgets || {}).length === 0) {
+        return `
+            <div class="max-w-md mx-auto text-center mt-20">
+                <div class="w-24 h-24 bg-emerald-100 rounded-[3rem] flex items-center justify-center mx-auto mb-8 shadow-inner shadow-emerald-200">
+                    <i data-lucide="compass" class="w-12 h-12 text-emerald-500"></i>
+                </div>
+                <h2 class="text-3xl font-black text-slate-900 mb-4">Set Up Your Budget</h2>
+                <p class="text-slate-500 mb-8 font-bold leading-relaxed text-sm">Let's build a budget that works for you. We'll start with your income and allocate it across your goals, investments, and expenses.</p>
+                <button onclick="window.startBudgetWizard(1)" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-widest py-5 rounded-2xl transition-all shadow-xl shadow-emerald-200">Start Questionnaire</button>
+            </div>
+        `;
+    }
+
+    let totalAllocated = 0;
+    let totalSpent = 0;
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    
+    const catHTML = state.data.expenseCategories.map(cat => {
+        const budget = state.data.budgets[cat] || 0;
+        if (budget === 0) return '';
+        
+        let spent = 0;
+        state.data.transactions.forEach(t => {
+            if ((t.type === 'expense' || t.type === 'transfer_out') && t.category === cat && t.date >= startOfMonth) {
+                spent += parseFloat(t.amount);
+            }
+        });
+        
+        totalAllocated += budget;
+        totalSpent += spent;
+        
+        const pct = budget > 0 ? (spent / budget) * 100 : 0;
+        const isOver = spent > budget;
+        const color = isOver ? 'bg-rose-500' : 'bg-emerald-500';
+        
+        return `
+            <div class="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm mb-4 relative overflow-hidden group hover:border-emerald-200 transition-colors">
+                <div class="flex justify-between items-end mb-3">
+                    <div>
+                        <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">${cat}</p>
+                        <h4 class="text-lg font-black text-slate-800">AED ${spent.toLocaleString()}</h4>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase">Limit: AED ${budget.toLocaleString()}</p>
+                    </div>
+                </div>
+                <div class="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full ${color} transition-all duration-1000" style="width: ${Math.min(100, pct)}%"></div>
+                </div>
+                ${isOver ? `<p class="text-[9px] font-black text-rose-500 uppercase mt-2">Over Budget by AED ${(spent - budget).toLocaleString()}</p>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    const unallocated = expectedSalary - totalAllocated;
+
+    return `
+        <div class="max-w-xl mx-auto space-y-6 pb-20">
+            <div class="flex justify-between items-center px-2">
+                <h2 class="text-2xl font-black text-slate-900">Current Budget</h2>
+                <button onclick="window.startBudgetWizard(1)" class="bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2"><i data-lucide="edit-3" class="w-3 h-3"></i> Edit Setup</button>
+            </div>
+            
+            <div class="bg-slate-900 p-8 rounded-[3rem] shadow-xl text-white relative overflow-hidden">
+                <div class="relative z-10 flex justify-between items-center mb-6">
+                    <div>
+                        <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Expected Income</p>
+                        <h3 class="text-2xl font-black text-emerald-400">AED ${expectedSalary.toLocaleString()}</h3>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Unallocated</p>
+                        <h3 class="text-xl font-black ${unallocated < 0 ? 'text-rose-400' : 'text-slate-300'}">AED ${unallocated.toLocaleString()}</h3>
+                    </div>
+                </div>
+                
+                <div class="relative z-10 bg-white/10 p-5 rounded-3xl backdrop-blur-md border border-white/10">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-xs font-bold text-slate-300 uppercase">Total Spend</p>
+                        <p class="text-xs font-black text-white">AED ${totalSpent.toLocaleString()} <span class="text-slate-400">/ ${totalAllocated.toLocaleString()}</span></p>
+                    </div>
+                    <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-emerald-500 transition-all duration-1000" style="width: ${totalAllocated > 0 ? Math.min(100, (totalSpent / totalAllocated) * 100) : 0}%"></div>
+                    </div>
+                </div>
+                
+                <div class="absolute -right-4 -top-4 opacity-5 pointer-events-none"><i data-lucide="pie-chart" class="w-48 h-48"></i></div>
+            </div>
+            
+            <div class="px-2">
+                <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Expense & Investment Budgets</h4>
+                ${catHTML}
+            </div>
+        </div>
+    `;
+};
+
+
+// --- ENVELOPE BUDGETING LOGIC ---
+
+// Ensure ledger exists
+window.state.data.envelopeLedger = window.state.data.envelopeLedger || [];
+
+// Core calculation engine
+window.getEnvelopeStats = function() {
+    const el = state.data.envelopeLedger;
+    const tx = state.data.transactions;
+    
+    let stats = {
+        totalCredit: 0,
+        totalFunded: 0,
+        totalDefunded: 0,
+        unallocatedCash: 0,
+        categories: {}
+    };
+
+    el.forEach(item => {
+        if (item.type === 'credit') stats.totalCredit += item.amount;
+        if (item.type === 'fund') {
+            stats.totalFunded += item.amount;
+            if (!stats.categories[item.category]) stats.categories[item.category] = { funded: 0, spent: 0, available: 0 };
+            stats.categories[item.category].funded += item.amount;
+        }
+        if (item.type === 'defund') {
+            stats.totalDefunded += item.amount;
+            if (!stats.categories[item.category]) stats.categories[item.category] = { funded: 0, spent: 0, available: 0 };
+            stats.categories[item.category].funded -= item.amount;
+        }
+    });
+
+    tx.forEach(t => {
+        if ((t.type === 'expense' || t.type === 'transfer_out') && t.category) {
+            if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
+            stats.categories[t.category].spent += parseFloat(t.amount);
+        }
+    });
+
+    stats.unallocatedCash = stats.totalCredit - (stats.totalFunded - stats.totalDefunded);
+
+    // Calc available for all
+    Object.keys(stats.categories).forEach(cat => {
+        stats.categories[cat].available = stats.categories[cat].funded - stats.categories[cat].spent;
+    });
+
+    return stats;
+};
+
+// 1. Process Salary Revamp
+window.processSalary = async function () {
+    const amt = parseFloat(document.getElementById('sal-amount').value) || 0;
+    const aId = document.getElementById('sal-acc').value;
+    if (amt <= 0 || !aId) {
+        window.showToast("Please enter a valid amount and select account", "error");
+        return;
+    }
+    
+    const rateSnapshot = state.data.settings.rate;
+    const date = new Date().toISOString();
+
+    // Log the income to the bank
+    state.data.transactions.push({
+        id: window.genId(), accountId: aId, amount: window.toCurrency(amt), type: 'income', category: 'Salary', note: `Salary Credited`, date, exchangeRate: rateSnapshot
+    });
+
+    // Log the credit to the envelope system
+    state.data.envelopeLedger.push({
+        id: window.genId(), date, type: 'credit', amount: amt
+    });
+
+    // Set last salary date for tracking period
+    state.data.settings.lastSalaryDate = date;
+
+    await window.updateDb();
+    window.showToast("Salary Credited! Now allocate it.", "success");
+    
+    // Jump straight to the Checklist
+    window.renderBudgetUIOverride();
+};
+
+// 2. Budget UI Override (The Checklist & Dashboard combined)
+window.renderBudgetUIOverride = function () {
+    const stats = window.getEnvelopeStats();
+    let content = '';
+
+    const hasUnallocated = stats.unallocatedCash > 0.01;
+
+    // Header Area
+    content += `
+        <div class="max-w-xl mx-auto space-y-6 pb-20">
+            <div class="bg-slate-900 p-8 rounded-[3rem] shadow-xl text-white relative overflow-hidden">
+                <div class="relative z-10 text-center mb-6">
+                    <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Unallocated Cash</p>
+                    <h3 class="text-5xl font-black ${hasUnallocated ? 'text-emerald-400' : 'text-slate-300'} num-font">AED ${stats.unallocatedCash.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
+                </div>
+                
+                ${hasUnallocated ? `
+                <div class="relative z-10 bg-emerald-500/20 border border-emerald-500/50 p-4 rounded-3xl backdrop-blur-md text-center">
+                    <p class="text-xs font-bold text-emerald-100">You have money to assign! Use the checklist below to fund your categories.</p>
+                </div>
+                ` : `
+                <div class="relative z-10 bg-slate-800/50 border border-slate-700 p-4 rounded-3xl backdrop-blur-md text-center flex justify-between items-center px-6">
+                    <p class="text-xs font-bold text-slate-400">All cash assigned</p>
+                    <button onclick="window.startBudgetWizard(2)" class="text-[10px] font-black text-slate-300 hover:text-white uppercase tracking-widest"><i data-lucide="settings" class="w-3 h-3 inline"></i> Manage Categories</button>
+                </div>
+                `}
+                <div class="absolute -right-4 -top-4 opacity-5 pointer-events-none"><i data-lucide="layers" class="w-48 h-48"></i></div>
+            </div>
+    `;
+
+    // Category List (The Checklist)
+    content += `<div class="px-2 space-y-4">
+        <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Your Envelopes (Categories)</h4>
+    `;
+
+    state.data.expenseCategories.forEach(cat => {
+        const cStats = stats.categories[cat] || { funded: 0, spent: 0, available: 0 };
+        const isNegative = cStats.available < 0;
+        const color = isNegative ? 'text-rose-500' : 'text-slate-800';
+        
+        content += `
+            <div class="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group hover:border-emerald-200 transition-colors cursor-pointer" onclick="window.showCategoryDetails('${cat}')">
+                <div class="flex justify-between items-center">
+                    <div class="w-1/3">
+                        <p class="text-xs font-black uppercase text-slate-400 tracking-widest mb-1 truncate">${cat}</p>
+                        <h4 class="text-xl font-black ${color} num-font">AED ${cStats.available.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h4>
+                        <p class="text-[9px] font-bold text-slate-400 mt-1">Left to spend</p>
+                    </div>
+                    
+                    <div class="w-2/3 flex items-center justify-end gap-2" onclick="event.stopPropagation()">
+                        <div class="flex flex-col items-end mr-4">
+                            <p class="text-[9px] font-bold text-slate-400 uppercase">Total Funded</p>
+                            <p class="text-xs font-black text-slate-700 num-font">AED ${cStats.funded.toLocaleString()}</p>
+                        </div>
+                        <button onclick="window.promptFundCategory('${cat}')" class="bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-sm border border-emerald-100">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+                ${isNegative ? `<div class="absolute bottom-0 left-0 w-full h-1 bg-rose-500"></div>` : ''}
+            </div>
+        `;
+    });
+
+    content += `</div></div>`;
+    
+    const container = document.getElementById('modal-content');
+    if (container) {
+        container.innerHTML = content;
+        lucide.createIcons();
+    }
+};
+
+window.promptFundCategory = function(cat) {
+    const stats = window.getEnvelopeStats();
+    
+    window.showPrompt(`Fund ${cat}`, `Enter amount to assign to ${cat}. (Unallocated Cash: ${stats.unallocatedCash})`, async (val) => {
+        const amount = parseFloat(val);
+        if (isNaN(amount) || amount === 0) return;
+        
+        // If they enter a positive number, it's funding. If negative, defunding.
+        if (amount > 0 && amount > stats.unallocatedCash) {
+            window.showToast("Not enough unallocated cash!", "error");
+            return;
+        }
+
+        const type = amount > 0 ? 'fund' : 'defund';
+        
+        state.data.envelopeLedger.push({
+            id: window.genId(),
+            date: new Date().toISOString(),
+            type: type,
+            category: cat,
+            amount: Math.abs(amount)
+        });
+
+        await window.updateDb();
+        window.renderBudgetUIOverride();
+    });
+};
+
+window.showCategoryDetails = function(cat) {
+    const txs = state.data.transactions.filter(t => (t.type === 'expense' || t.type === 'transfer_out') && t.category === cat)
+                  .sort((a,b) => new Date(b.date) - new Date(a.date));
+                  
+    const stats = window.getEnvelopeStats().categories[cat] || { funded: 0, spent: 0, available: 0 };
+
+    let content = `
+        <div class="max-w-md mx-auto bg-white/70 backdrop-blur-xl p-8 rounded-[3rem] border shadow-2xl h-[85vh] flex flex-col">
+            <div class="flex justify-between items-center mb-6">
+                <button onclick="window.renderBudgetUIOverride()" class="text-slate-400 hover:text-slate-600"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                <h2 class="text-xl font-black text-slate-900 uppercase tracking-widest">${cat}</h2>
+                <div class="w-5"></div>
+            </div>
+            
+            <div class="bg-slate-50 border rounded-3xl p-6 mb-6 text-center shadow-inner">
+                <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Available Balance</p>
+                <h3 class="text-3xl font-black ${stats.available < 0 ? 'text-rose-500' : 'text-emerald-500'} num-font mb-4">AED ${stats.available.toLocaleString()}</h3>
+                
+                <div class="flex justify-between border-t pt-4 px-2">
+                    <div>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase">Funded</p>
+                        <p class="text-sm font-black text-slate-700 num-font">${stats.funded.toLocaleString()}</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase">Spent</p>
+                        <p class="text-sm font-black text-slate-700 num-font">${stats.spent.toLocaleString()}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Activity Log</h4>
+            <div class="flex-1 overflow-auto pr-2 space-y-3">
+    `;
+
+    if (txs.length === 0) {
+        content += `<p class="text-xs font-bold text-slate-400 text-center mt-10">No activity yet.</p>`;
+    } else {
+        txs.forEach(t => {
+            const acc = state.data.accounts.find(a => a.id === t.accountId);
+            content += `
+                <div class="flex justify-between items-center p-4 bg-white rounded-2xl border shadow-sm">
+                    <div>
+                        <p class="text-xs font-black text-slate-700">${t.note || 'Expense'}</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} &bull; ${acc ? acc.name : ''}</p>
+                    </div>
+                    <p class="text-sm font-black text-slate-900 num-font">AED ${parseFloat(t.amount).toLocaleString()}</p>
+                </div>
+            `;
+        });
+    }
+
+    content += `</div></div>`;
+    
+    document.getElementById('modal-content').innerHTML = content;
+    lucide.createIcons();
+};
+
+// 3. Override Salary Modal UI to be simple
+window.renderAppOverrides = function() {
+    // We override the click handler for the Salary Day button if needed, 
+    // but the actual modal rendering happens in openModal('salary').
+    // Let's hook into window.openModal to intercept 'salary' and 'budget'.
+    
+    const originalOpenModal = window.openModal;
+    window.openModal = function(type, param) {
+        if (type === 'budget') {
+            document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
+            document.getElementById('modal-title').innerText = 'Monthly Budgeting';
+            window.renderBudgetUIOverride();
+            return;
+        }
+        
+        if (type === 'salary') {
+            document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
+            document.getElementById('modal-title').innerText = 'Process Salary Day';
+            const c = document.getElementById('modal-content');
+            c.innerHTML = `
+                <div class="max-w-md mx-auto bg-white p-10 rounded-[3rem] border shadow-xl text-center">
+                    <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                        <i data-lucide="banknote" class="w-10 h-10 text-emerald-500"></i>
+                    </div>
+                    <h3 class="text-2xl font-black text-slate-900 mb-2">Salary Credited</h3>
+                    <p class="text-xs font-bold text-slate-500 mb-8">Record your incoming salary to start funding your budget envelopes.</p>
+                    
+                    <div class="mb-6">
+                        <label class="text-[10px] font-black uppercase text-slate-400 block mb-2 text-left ml-2">Total Received Amount</label>
+                        <input type="number" id="sal-amount" placeholder="0.00" class="w-full p-5 border-2 rounded-2xl font-black text-3xl text-center focus:border-emerald-500 outline-none text-emerald-600 num-font">
+                    </div>
+                    
+                    <div class="mb-8">
+                        <label class="text-[10px] font-black uppercase text-slate-400 block mb-2 text-left ml-2">Credited To Account</label>
+                        <select id="sal-acc" class="w-full p-4 border rounded-xl font-bold text-center outline-none">
+                            ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
+                        </select>
+                    </div>
+                    
+                    <button onclick="window.processSalary()" class="w-full bg-slate-900 hover:bg-slate-800 text-white p-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all">Record & Start Budgeting <i data-lucide="arrow-right" class="w-4 h-4 inline ml-2"></i></button>
+                </div>
+            `;
+            lucide.createIcons();
+            return;
+        }
+        
+        // Otherwise, call original
+        originalOpenModal(type, param);
+    };
+};
+
+window.renderAppOverrides();
+
     </script>
 </body>
 
 </html>
+
+
