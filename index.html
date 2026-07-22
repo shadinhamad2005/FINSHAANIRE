@@ -8174,8 +8174,19 @@ window.state.data.envelopeLedger = window.state.data.envelopeLedger || [];
 
 // Core calculation engine
 window.getEnvelopeStats = function() {
-    const el = state.data.envelopeLedger;
-    const tx = state.data.transactions;
+    const el = state.data.envelopeLedger || [];
+    const tx = state.data.transactions || [];
+    
+    // Feature Cutoff: Only count expenses starting from the month the envelope system was first used.
+    const firstCredit = el.find(item => item.type === 'credit');
+    let envelopeStartDate = null;
+    if (firstCredit) {
+        const d = new Date(firstCredit.date);
+        envelopeStartDate = new Date(d.getFullYear(), d.getMonth(), 1);
+    } else {
+        const now = new Date();
+        envelopeStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
     
     let stats = {
         totalCredit: 0,
@@ -8200,9 +8211,12 @@ window.getEnvelopeStats = function() {
     });
 
     tx.forEach(t => {
-        if ((t.type === 'expense' || t.type === 'transfer_out') && t.category) {
-            if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
-            stats.categories[t.category].spent += parseFloat(t.amount);
+        // Only count expenses if they happened on or after the envelopeStartDate
+        if (new Date(t.date) >= envelopeStartDate) {
+            if ((t.type === 'expense' || t.type === 'transfer_out') && t.category) {
+                if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
+                stats.categories[t.category].spent += parseFloat(t.amount);
+            }
         }
     });
 
