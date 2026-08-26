@@ -1,0 +1,141 @@
+﻿
+LineNumber Line                                                                                                        
+---------- ----                                                                                                        
+       352                 <p class="text-slate-500 mt-2 font-medium text-center">Wealth Management and Budgeting.</p> 
+       506                             <button onclick="window.openModal('budget')"                                    
+       508                                 title="Budgeting"><i data-lucide="target" class="w-5 h-5 mx-auto"></i></b...
+       514                                 title="Growth"><i data-lucide="trending-up" class="w-5 h-5 mx-auto"></i><...
+       530                             <p class="text-[9px] uppercase font-black text-slate-400 mb-1 text-center">In...
+       599                             class="w-5 h-3.5 mr-2 rounded shadow-sm text-center text-center"> India Portf...
+       695                 budgets: {},                                                                                
+       697                 portfolio: {}, // { schemeCode: { nav, date, name } }                                       
+      1160                 if (a.type === 'Mutual Fund' && a.units && a.schemeCode && state.data.portfolio[a.schemeC...
+      1161                     const nav = parseFloat(state.data.portfolio[a.schemeCode].nav);                         
+      1176                     if (!state.data.portfolio) state.data.portfolio = {};                                   
+      1177                     state.data.portfolio[acc.schemeCode] = {                                                
+      1216                     const meta = state.data.portfolio?.[a.schemeCode];                                      
+      1864                     <p class="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1">Portfo...
+      2574                         personaDesc = "Outflows exceeded inflows over this 365-day cycle. Budget re-align...
+      2886                 case 'sinking-add':                                                                         
+      2887                     t.innerText = 'New Sinking Fund';                                                       
+      2901                             <button onclick="window.saveSinkingFund()" class="w-full bg-indigo-600 text-w...
+      2973                 case 'budget': t.innerText = 'Monthly Budgeting'; c.innerHTML = window.renderBudgetUI(); ...
+      2974                 case 'performance': t.innerText = 'Portfolio Growth'; c.innerHTML = window.renderPerforma...
+      2987                             <p class="text-sm text-slate-500 font-bold">Define your ideal portfolio mix.</p>
+      3016                     t.innerText = 'Budget Sweep';                                                           
+      3023                                 <p class="text-xs font-bold text-emerald-700/60 mt-2">From '${sw.cat}' Bu...
+      3152             const totalPortfolioValue = Object.values(allocIds).reduce((a, b) => a + b, 0);                 
+      3160                 const targetVal = totalPortfolioValue * (targetPct / 100);                                  
+      3247                     `<div class="text-center py-4"><p class="text-emerald-400 font-bold text-sm">Balanced...
+      3306                     <h4 class="text-xs font-black uppercase text-slate-400 tracking-widest mb-4 text-left...
+      3359             const discretionary = Math.max(0, freeCash - (state.data.fixedCategories || []).reduce((sum, ...
+      3408         window.sweepBudget = function (cat, amt) {                                                          
+      3447                 note: `Budget Sweep: ${sw.cat} -> ${goal.name} `,                                           
+      3458         window.setBudget = function (cat) {                                                                 
+      3459             window.showPrompt(`Budget for ${cat}`, "Set Monthly Limit (AED):", async (valStr) => {          
+      3462                     if (!state.data.budgets) state.data.budgets = {};                                       
+      3463                     state.data.budgets[cat] = val;                                                          
+      3464                     await updateDb(); window.openModal('budget');                                           
+      3465                     window.showToast("Budget Updated", "success");                                          
+      3470         window.checkBudgetRollover = async function () {                                                    
+      3477                 if (!state.data.budgetRollovers) state.data.budgetRollovers = {};                           
+      3482                     const budget = (state.data.budgets && state.data.budgets[c]) || 0;                      
+      3483                     if (budget > 0) {                                                                       
+      3491                         const leftover = Math.max(0, budget - spend);                                       
+      3493                             state.data.budgetRollovers[c] = (state.data.budgetRollovers[c] || 0) + leftover;
+      3917             // 3. Sinking (Mentally Locked)                                                                 
+      3919             const totalSinking = (state.data.sinkingFunds || []).reduce((s, f) => s + Number(f.target), 0); 
+      3922             const sinkingMonthly = (state.data.sinkingFunds || []).reduce((s, f) => {                       
+      3929             // Net Free = Assets - Debts - Sinking Commitments                                              
+      3930             const netFree = assets - debts - totalSinking;                                                  
+      3945                         <p class="text-[10px] font-bold text-indigo-400">Assets - Liabilities - Sinking G...
+      3962                 <!--SINKING ALERT-->                                                                        
+      3968                     <p class="text-3xl font-black text-slate-800">-${Math.round(totalSinking).toLocaleStr...
+      3969                     <p class="text-[10px] font-bold text-amber-600/60 mt-1">Allocated to Sinking Funds</p>  
+      3971                         <p class="text-[9px] font-bold text-slate-400 uppercase">Monthly Lock: AED ${Math...
+      3988             const startDay = s.budgetStartDay || 1;                                                         
+      3991             const alertLim = s.budgetAlertLimit || 80;                                                      
+      4042                 <!--2. BUDGET CYCLE & THRESHOLDS-->                                                         
+      4044                     <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 borde...
+      4049                                 <span class="text-xs font-bold text-slate-700">Budget Start Day</span>      
+      4052                             <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">Resets your "Days L...
+      4058                                     <span class="text-xs font-bold text-slate-600">Budget Alert (%)</span>  
+      4255             state.data.settings.budgetStartDay = parseInt(document.getElementById('sets-day').value) || 1;  
+      4258             state.data.settings.budgetAlertLimit = parseFloat(document.getElementById('sets-alert').value...
+      4303                     // 2. Merge Budgets                                                                     
+      4304                     if (state.data.budgets && state.data.budgets[src]) {                                    
+      4305                         const srcB = state.data.budgets[src] || 0;                                          
+      4306                         state.data.budgets[tgt] = (state.data.budgets[tgt] || 0) + srcB;                    
+      4307                         delete state.data.budgets[src];                                                     
+      4333                             budgets: {},                                                                    
+      5690             const fixedBudgetSum = fixedCats.reduce((s, cat) => s + (state.data.budgets[cat] || 0), 0);     
+      5691             const discretionary = Math.max(0, avgIncome - fixedBudgetSum);                                  
+      5854         window.openBudgetSettings = function () {                                                           
+      5856                 <p class="text-[10px] font-black uppercase text-slate-400">Monthly Budget Targets (AED)</p> 
+      5861                             <input type="number" id="budget-${cat}" value="${state.data.budgets[cat] || 0...
+      5865                 <button onclick="window.saveBudgets()" class="w-full bg-emerald-500 text-white p-5 rounde...
+      5869         window.saveBudgets = async function () { state.data.expenseCategories.forEach(cat => { state.data...
+      6131                     if (isMFSell && sAcc.schemeCode && state.data.portfolio[sAcc.schemeCode]) {             
+      6132                         document.getElementById('sell-rate').value = state.data.portfolio[sAcc.schemeCode...
+      6162                     if (isMFBuy && tAcc.schemeCode && state.data.portfolio[tAcc.schemeCode]) {              
+      6163                         document.getElementById('buy-rate').value = state.data.portfolio[tAcc.schemeCode]...
+      6486                 const meta = state.data.portfolio ? state.data.portfolio[tAcc.schemeCode] : null;           
+      6551                     const meta = state.data.portfolio ? state.data.portfolio[sAcc.schemeCode] : null;       
+      6879             const growthRate = isInv ? 0.10 : 0.04; // 10% for inv, 4% for banks                            
+      6880             const fv5 = curNative * Math.pow(1 + growthRate, 5);                                            
+      6881             const fv10 = curNative * Math.pow(1 + growthRate, 10);                                          
+      6920                             <p class="text-[8px] text-emerald-600 font-bold mt-1">+${(growthRate * 100)}%...
+      7039             // 1. BUDGET PACING ALERTS                                                                      
+      7041                 const budget = state.data.budgets[cat] || 0;                                                
+      7042                 if (budget > 0) {                                                                           
+      7049                             return s + (Number(t.amount) * (cur === 'AED' ? 1 : (1 / r))); // Budget is u...
+      7050                             // Logic correction: Budgets input label says "Limits (AED)". So we convert e...
+      7053                     const spentPct = spent / budget;                                                        
+      7059                             text: `Slow down on <b> ${cat}</b> !You've used ${Math.round(spentPct * 100)}...
+      7065                             text: `<b>${cat}</b> budget exceeded by ${Math.round((spentPct - 1) * 100)}%....
+      7248         window.saveSinkingFund = async () => {                                                              
+      7259             state.data.sinkingFunds.push({                                                                  
+      7266             window.showToast("Sinking Fund Created!", "success");                                           
+      7436                         if (!state.data.portfolio) state.data.portfolio = {};                               
+      7441                         if (!state.data.budgets) state.data.budgets = {};                                   
+      7442                         if (!state.data.budgetRollovers) state.data.budgetRollovers = {};                   
+      7445                         if (!state.data.sinkingFunds) state.data.sinkingFunds = []; // New Feature          
+      7467                             await window.checkBudgetRollover();                                             
+      7483         // --- SINKING FUNDS LOGIC ---                                                                      
+      7484         window.addSinkingFund = function () {                                                               
+      7485             window.openModal('sinking-add');                                                                
+      7487         window.deleteSinkingFund = async (id) => {                                                          
+      7488             window.showConfirm("Delete this Sinking Fund?", "This cannot be undone.", async () => {         
+      7489                 state.data.sinkingFunds = state.data.sinkingFunds.filter(f => f.id !== id);                 
+      7529                 // Let's do: Total Portfolio Gain / Max Age (to be safe)                                    
+      7543                     `To earn back the cost of **AED ${price.toLocaleString()}** passively, it will take y...
+      7549         // --- OVERRIDE: Budgeting in AED ---                                                               
+      7550         window.renderBudgetUI = function () {                                                               
+      7551             const startDay = state.data.settings.budgetStartDay || 1;                                       
+      7589             let totalFixedBudget = 0, totalFixedSpend = 0;                                                  
+      7590             let totalDiscBudget = 0, totalDiscSpend = 0;                                                    
+      7594                 const b = (state.data.budgets && state.data.budgets[cat]) || 0;                             
+      7595                 const rollover = (state.data.budgetRollovers && state.data.budgetRollovers[cat]) || 0;      
+      7620                 if (isFixed) { totalFixedBudget += totalLimit; totalFixedSpend += spend; }                  
+      7621                 else { totalDiscBudget += totalLimit; totalDiscSpend += spend; }                            
+      7653                 totalFixedBudget += bnplLimit;                                                              
+      7657             // Calc Sinking Funds Lock                                                                      
+      7658             const sinkingFunds = (state.data.sinkingFunds || []).map(f => {                                 
+      7668             const totalSinkingLock = sinkingFunds.reduce((s, f) => {                                        
+      7674             // Calc Safe Spend (Discretionary Only - Sinking Locks)                                         
+      7675             const remainingDisc = Math.max(0, (totalDiscBudget - totalDiscSpend) - totalSinkingLock);       
+      7685                 const alertLim = state.data.settings.budgetAlertLimit || 80;                                
+      7713                             <button onclick="window.setBudget('${i.cat}')" class="text-[9px] font-bold te...
+      7714                             ${canSweep ? `<button onclick="window.sweepBudget('${i.cat}', ${Math.max(0, i...
+      7728                 <!-- 0.5 SINKING FUNDS MANAGER -->                                                          
+      7732                             <i data-lucide="anchor" class="w-4 h-4"></i> Sinking Funds                      
+      7734                         <button onclick="window.addSinkingFund()" class="bg-indigo-800 p-2 rounded-full h...
+      7739                         <h2 class="text-3xl font-black text-indigo-300 mb-1 num-font">AED ${Math.round(to...
+      7740                         <p class="text-[10px] text-indigo-400 font-bold mb-4">Locked from Monthly Budget</p>
+      7743                             ${sinkingFunds.map(f => `                                                       
+      7751                                      <button onclick="window.deleteSinkingFund('${f.id}')" class="text-[8...
+      7753                             </div>`).join('') || '<p class="text-indigo-400/50 text-xs italic text-center...
+      7763                         <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">D...
+      7783                         <button onclick="window.openBudgetSettings()" class="bg-slate-100 text-slate-500 ...
+
+

@@ -1,0 +1,23 @@
+window.saveAccount = async function () {
+            const n = document.getElementById('an')?.value;
+            const c = document.getElementById('ac')?.value || 'AED';
+            let t = document.getElementById('at')?.value;
+            // Resolve Nested Type
+            if (t === 'Investment') {
+                t = document.getElementById('inv-type').value;
+                if (t === 'General') t = 'Investment'; // Fallback to generic
+            }
+
+            const bal = parseFloat(document.getElementById('ab').value) || 0;
+            const w = parseFloat(document.getElementById('aw')?.value) || 0;
+            const u = parseFloat(document.getElementById('au')?.value) || 0;
+            const code = document.getElementById('asc')?.value;
+
+            // Capture Extra Fields
+            const subtype = t === 'Commodity' ? document.getElementById('commodity-type')?.value :
+                (t === 'Asset' ? 'General' : null);
+
+            const category = document.getElementById('mf-cat')?.value || document.getElementById('re-type')?.value || 'General';
+            const location = document.getElementById('re-loc')?.value;
+            const area = document.getElementById('re-area')?.value;
+            const vehicle = { make: document.getElementById('veh-make')?.value, model: document.getElementById('veh-model')?.value, year: document.getElementById('veh-year')?.value };

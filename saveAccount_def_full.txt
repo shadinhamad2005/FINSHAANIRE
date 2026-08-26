@@ -1,0 +1,69 @@
+window.saveAccount = async function () {
+            const n = document.getElementById('an')?.value;
+            const c = document.getElementById('ac')?.value || 'AED';
+            let t = document.getElementById('at')?.value;
+            // Resolve Nested Type
+            if (t === 'Investment') {
+                t = document.getElementById('inv-type').value;
+                if (t === 'General') t = 'Investment'; // Fallback to generic
+            }
+
+            const bal = parseFloat(document.getElementById('ab').value) || 0;
+            const w = parseFloat(document.getElementById('aw')?.value) || 0;
+            const u = parseFloat(document.getElementById('au')?.value) || 0;
+            const code = document.getElementById('asc')?.value;
+
+            // Capture Extra Fields
+            const subtype = t === 'Commodity' ? document.getElementById('commodity-type')?.value :
+                (t === 'Asset' ? 'General' : null);
+
+            const category = document.getElementById('mf-cat')?.value || document.getElementById('re-type')?.value || 'General';
+            const location = document.getElementById('re-loc')?.value;
+            const area = document.getElementById('re-area')?.value;
+            const vehicle = { make: document.getElementById('veh-make')?.value, model: document.getElementById('veh-model')?.value, year: document.getElementById('veh-year')?.value };
+            const crypto = { sym: document.getElementById('cry-sym')?.value, net: document.getElementById('cry-net')?.value };
+            const collectible = { brand: document.getElementById('col-brand')?.value, cond: document.getElementById('col-cond')?.value };
+
+            if (!n) return;
+            window.setBtnLoading('btn-save-acc', true);
+
+            const newAcc = {
+                id: window.genId(), name: n, currency: c, type: t,
+                balance: bal, weight: w, units: u, schemeCode: code,
+                subtype: subtype, category: category,
+                details: { location, area, ...vehicle, ...crypto, ...collectible }
+            };
+
+            if (t === 'Commodity') {
+                newAcc.subtype = document.getElementById('asub')?.value || document.getElementById('commodity-type')?.value || 'Gold';
+            } else if (t === 'Mutual Fund') {
+                newAcc.category = document.getElementById('acat')?.value || 'Equity';
+            }
+
+            if (bal !== 0) {
+                newAcc.balance = 0; // Starts at 0, transaction will fill it
+                state.data.transactions.push({
+                    id: window.genId(),
+                    accountId: newAcc.id,
+                    amount: window.toCurrency(bal),
+                    type: 'income',
+                    category: 'Opening Balance',
+                    note: 'Initial Balance',
+                    tags: ['#init'],
+                    date: new Date().toISOString(),
+                    exchangeRate: state.data.settings.rate
+                });
+            } else {
+                newAcc.balance = 0;
+            }
+
+            state.data.accounts.push(newAcc);
+
+            // Mutual Fund fetch removed per cash-only logic
+
+            await updateDb();
+            window.setBtnLoading('btn-save-acc', false);
+            closeModal();
+        };
+
+        
