@@ -741,7 +741,7 @@
                             <!-- GUILT-FREE SPEND BOX -->
                             <div onclick="window.openModal('guilt_free')" class="bg-rose-50 border border-rose-100 rounded-3xl p-5 text-center transform hover:scale-[1.02] transition-transform cursor-pointer hover:shadow-sm">
                                 <h2 class="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">Guilt-Free Spend</h2>
-                                <p id="guilt-free-val" class="text-2xl font-black text-rose-600 tracking-tight">AED 0</p>
+                                <p id="guilt-free-val" class="text-xl md:text-2xl font-black text-rose-600 tracking-tight">AED 0</p>
                             </div>
                             
                             <!-- NO SPEND STREAK -->
@@ -749,7 +749,7 @@
                                 <h2 class="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">No-Spend Streak</h2>
                                 <div class="flex items-center space-x-2">
                                     <i data-lucide="flame" class="w-5 h-5 text-amber-500"></i>
-                                    <p id="no-spend-val" class="text-2xl font-black text-amber-600 tracking-tight">0 Days</p>
+                                    <p id="no-spend-val" class="text-xl md:text-2xl font-black text-amber-600 tracking-tight">0 Days</p>
                                 </div>
                             </div>
 
@@ -1096,6 +1096,9 @@
             const cleanedData = sanitizeData(state.data);
             await setDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'finance', 'main'), cleanedData);
         };
+        const closeModal = window.closeModal;
+        const closeReminder = window.closeReminder;
+        const updateDb = window.updateDb;
 
         // Math Helper: Money Class for Financial Grade Integer Math
         class Money {
@@ -1486,41 +1489,56 @@
                 let icon = 'layers'; // Default
                 let iconColor = 'bg-slate-900 border border-slate-700/30 text-rose-400'; // Sleek dark default
 
-                if (a.type === 'Mutual Fund') {
-                    const meta = state.data.portfolio?.[a.schemeCode];
-                    subtext = meta ? `NAV: ?${meta.nav} (${meta.date})` : 'Mutual Fund';
-                    icon = 'pie-chart';
+                if (a.type === 'Commodity' || (a.subtype && ['Gold', 'Silver', 'Platinum', 'Palladium', 'Oil', 'Diamond'].includes(a.subtype))) {
+                    icon = 'coins';
+                    iconColor = 'bg-amber-500/15 border border-amber-500/30 text-amber-400';
+                    const metalName = a.subtype || 'Commodity';
+                    subtext = `${metalName}${a.weight ? ' • ' + a.weight + 'g' : ' • Asset'}`;
                 }
-
-                if (a.type === 'Bank Account') {
+                else if (a.type === 'Mutual Fund') {
+                    const meta = state.data.portfolio?.[a.schemeCode];
+                    subtext = meta ? `NAV: ₹${meta.nav} (${meta.date})` : (a.category ? `Mutual Fund • ${a.category}` : 'Mutual Fund');
+                    icon = 'pie-chart';
+                    iconColor = 'bg-blue-500/15 border border-blue-500/30 text-blue-400';
+                }
+                else if (a.type === 'Bank Account') {
                     icon = 'landmark';
                     iconColor = 'bg-emerald-900/30 border border-emerald-700/30 text-emerald-400';
                 }
-                if (a.type === 'Cash') {
+                else if (a.type === 'Cash') {
                     icon = 'wallet';
                     iconColor = 'bg-emerald-900/30 border border-emerald-700/30 text-emerald-400';
                 }
-                if (a.type === 'Real Estate') {
+                else if (a.type === 'Savings') {
+                    icon = 'piggy-bank';
+                    iconColor = 'bg-teal-500/15 border border-teal-500/30 text-teal-400';
+                }
+                else if (a.type === 'Investment') {
+                    icon = 'trending-up';
+                    iconColor = 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-400';
+                    subtext = a.subtype || a.category || 'Investment';
+                }
+                else if (a.type === 'Real Estate') {
                     icon = 'building';
                     iconColor = 'bg-indigo-900/30 border border-indigo-700/30 text-indigo-400';
                     subtext = a.details?.location || a.category || 'Property';
                 }
-                if (a.type === 'Vehicle') {
+                else if (a.type === 'Vehicle') {
                     icon = 'car';
                     iconColor = 'bg-rose-900/30 border border-rose-700/30 text-rose-400';
                     subtext = `${a.details?.make || ''} ${a.details?.model || ''}`.trim() || 'Vehicle';
                 }
-                if (a.type === 'Crypto') {
+                else if (a.type === 'Crypto') {
                     icon = 'zap';
                     iconColor = 'bg-purple-900/30 border border-purple-700/30 text-purple-400';
                     subtext = `${a.details?.sym || 'CRYPTO'} (${a.details?.net || 'Chain'})`;
                 }
-                if (a.type === 'Collectible') {
+                else if (a.type === 'Collectible') {
                     icon = 'watch';
                     iconColor = 'bg-pink-900/30 border border-pink-700/30 text-pink-400';
                     subtext = a.details?.brand || 'Collectible';
                 }
-                if (a.type === 'Bond') {
+                else if (a.type === 'Bond') {
                     icon = 'file-text';
                     iconColor = 'bg-cyan-900/30 border border-cyan-700/30 text-cyan-400';
                 }
@@ -1600,16 +1618,35 @@
                 .filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type))
                 .reduce((s, a) => s + (a.currency === 'AED' ? a.balance : a.balance / r), 0);
                 
-            const totalBudgetsAED = state.data.envelopeLedger ? (() => {
-                const stats = window.getEnvelopeStats();
-                return stats.totalFunded - stats.totalDefunded;
-            })() : 0;
+            let totalBudgetsAED = 0;
+            if (state.data.envelopeLedger && state.data.envelopeLedger.length > 0) {
+                const stats = (typeof window.getEnvelopeStats === 'function') ? window.getEnvelopeStats() : null;
+                if (stats) totalBudgetsAED = Math.max(0, stats.totalFunded - stats.totalDefunded);
+            }
+            if (totalBudgetsAED === 0) {
+                if (state.data.budgetTemplate && Object.keys(state.data.budgetTemplate).length > 0) {
+                    totalBudgetsAED = Object.values(state.data.budgetTemplate).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                } else if (state.data.budgets && Object.keys(state.data.budgets).length > 0) {
+                    totalBudgetsAED = Object.values(state.data.budgets).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                }
+            }
             
             // Guilt-Free = Liquid Cash - Monthly Envelope Budgets
             const guiltFree = liquidAssetsAED - totalBudgetsAED;
             const gfValue = Math.max(0, guiltFree);
             ut('guilt-free-val', priv ? privText : window.fmtMoney(gfValue, 'AED'));
             ut('no-spend-val', window.getNoSpendStreak() + ' Days');
+
+            // Update Credit Score Radar
+            try {
+                if (typeof window.getPersonalCreditScore === 'function') {
+                    const cs = window.getPersonalCreditScore();
+                    ut('credit-score-val', `${cs.score} • ${cs.tier}`);
+                    ut('credit-score-sub', cs.statusSummary);
+                }
+            } catch (e) {
+                console.error("Credit score update err", e);
+            }
 
             // Update Milestone Radar
             try {
@@ -2298,7 +2335,7 @@
             const items = state.data.accounts.filter(a => {
                 if (a.currency !== currency) return false;
                 if (type === 'Commodity') return a.type === 'Commodity' && (a.subtype || 'Commodity') === subtype;
-                if (type === 'Mutual Fund') return a.type === 'Mutual Fund' && (a.category || 'Mutual Funds') === subtype;
+                if (type === 'Mutual Fund') return a.type === 'Mutual Fund';
                 return false;
             });
 
@@ -2309,46 +2346,60 @@
             const b = document.getElementById('modal-backdrop');
 
             // 1. Calculate Stats
-            const totalVal = items.reduce((s, a) => s + a.balance, 0);
-            let statHtml = '';
+            const totalVal = items.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+            const isPriv = state.data.settings?.isPrivate;
 
+            let statHtml = '';
             if (type === 'Commodity') {
                 const totalWeight = items.reduce((s, a) => s + (a.weight || 0), 0);
-                statHtml = `<div class="bg-amber-50 p-6 rounded-3xl border border-amber-100 text-center">
-                    <p class="text-[10px] font-black uppercase text-amber-500 tracking-widest mb-1">Total Weight</p>
-                    <p class="text-3xl font-black text-slate-800">${totalWeight.toFixed(2)}g</p>
+                statHtml = `<div class="bg-slate-800/80 p-5 rounded-3xl border border-amber-500/30 text-center">
+                    <p class="text-[10px] font-black uppercase text-amber-400 tracking-widest mb-1">Total Weight</p>
+                    <p class="text-2xl font-black text-white">${totalWeight.toFixed(2)}g</p>
                 </div>`;
             } else if (type === 'Mutual Fund') {
-                statHtml = `<div class="bg-blue-50 p-6 rounded-3xl border border-blue-100 text-center">
-                    <p class="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1">Portfolios</p>
-                    <p class="text-3xl font-black text-slate-800">${items.length} <span class="text-xs text-slate-400">Funds</span></p>
+                statHtml = `<div class="bg-slate-800/80 p-5 rounded-3xl border border-blue-500/30 text-center">
+                    <p class="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Portfolio Count</p>
+                    <p class="text-2xl font-black text-white">${items.length} <span class="text-xs text-slate-400 font-bold">Funds</span></p>
                 </div>`;
             }
 
-            t.innerText = `${subtype} (${currency})`;
+            t.innerText = `${subtype || type} (${currency})`;
             c.innerHTML = `
-                <div class="space-y-6">
+                <div class="space-y-6 max-w-xl mx-auto text-left">
                     <!-- Dashboard Header -->
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 text-center">
-                            <p class="text-[10px] font-black uppercase text-emerald-600 tracking-widest mb-1">Total Value</p>
-                            <p class="text-3xl font-black text-emerald-600">${window.fmtMoney(totalVal, currency)}</p>
+                        <div class="bg-slate-800/80 p-5 rounded-3xl border border-emerald-500/30 text-center">
+                            <p class="text-[10px] font-black uppercase text-emerald-400 tracking-widest mb-1">Total Portfolio Value</p>
+                            <p class="text-2xl font-black text-white num-font">${isPriv ? '••••' : window.fmtMoney(totalVal, currency)}</p>
                         </div>
                         ${statHtml}
                     </div>
 
                     <!-- Distribution Chart -->
-                    <div class="text-slate-900 bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
-                        <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Distribution</h4>
-                        <div class="relative h-48 w-full">
+                    ${items.length > 1 ? `
+                    <div class="bg-slate-900/90 p-6 rounded-[2.5rem] border border-slate-800 shadow-xl text-center">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Fund Allocation Breakdown</h4>
+                        <div class="relative h-44 w-full">
                             <canvas id="group-chart"></canvas>
+                        </div>
+                    </div>` : ''}
+
+                    <!-- Item List -->
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center px-1">
+                            <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Holdings in Portfolio (${items.length})</h4>
+                            <span class="text-[9px] font-bold text-slate-500">Tap fund to view ledger</span>
+                        </div>
+                        <div class="space-y-2">
+                            ${items.map(a => window.renderAssetCard(a)).join('')}
                         </div>
                     </div>
 
-                    <!-- Item List -->
-                    <div class="grid gap-2">
-                        <h4 class="text-[10px] font-black uppercase text-slate-400 mt-4 mb-2 tracking-widest text-left px-2">Holdings List</h4>
-                        ${items.map(a => window.renderAssetCard(a)).join('')}
+                    <!-- Quick Action -->
+                    <div class="pt-2">
+                        <button onclick="window.openModal('accounts')" class="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-2xl font-black uppercase text-xs tracking-wider transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4 text-emerald-400"></i> Add New Fund
+                        </button>
                     </div>
                 </div>
             `;
@@ -2356,48 +2407,95 @@
             lucide.createIcons();
 
             // Render Chart
-            setTimeout(() => {
-                const ctx = document.getElementById('group-chart');
-                if (ctx) {
-                    const labels = items.map(a => a.name);
-                    const data = items.map(a => a.balance);
-                    const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#6366f1', '#8b5cf6', '#14b8a6'];
+            if (items.length > 1) {
+                setTimeout(() => {
+                    const ctx = document.getElementById('group-chart');
+                    if (ctx) {
+                        const labels = items.map(a => a.name);
+                        const data = items.map(a => a.balance);
+                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316'];
 
-                    let existingChart = Chart.getChart(ctx);
-                    if (existingChart) existingChart.destroy();
-                    new Chart(ctx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                data: data,
-                                backgroundColor: colors,
-                                borderWidth: 0,
-                                hoverOffset: 10
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: { legend: { display: false } }, // Clean look
-                            cutout: '60%'
-                        }
-                    });
-                }
-            }, 100);
+                        let existingChart = Chart.getChart(ctx);
+                        if (existingChart) existingChart.destroy();
+                        new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    data: data,
+                                    backgroundColor: colors,
+                                    borderWidth: 0,
+                                    hoverOffset: 8
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'bottom',
+                                        labels: {
+                                            color: '#94a3b8',
+                                            font: { size: 10, weight: 'bold' },
+                                            boxWidth: 10,
+                                            padding: 12
+                                        }
+                                    }
+                                },
+                                cutout: '65%'
+                            }
+                        });
+                    }
+                }, 100);
+            }
         };
 
         function renderAssetsList(reg, items) {
             const container = document.getElementById(`${reg}-list`); if (!container) return;
             if (items.length === 0) { container.innerHTML = `<div class="p-8 border border-dashed border-slate-700 rounded-[2rem] text-center text-slate-500 uppercase text-[10px] font-black">No accounts</div>`; return; }
 
-            // Filter out commodities and render as sleek banking cards
-            const singleHTML = items
-                .filter(a => a.type !== 'Commodity')
-                .map(a => window.renderAssetCard(a))
-                .join('');
+            // Grouping for Mutual Funds
+            const mfItems = items.filter(a => a.type === 'Mutual Fund');
+            const otherItems = items.filter(a => a.type !== 'Mutual Fund');
 
-            container.innerHTML = `<div class="space-y-3">${singleHTML}</div>`;
+            let html = '';
+
+            // If there are 2 or more Mutual Funds in this list, aggregate them into a single Mutual Funds card
+            if (mfItems.length > 1) {
+                const totalBal = mfItems.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+                const cur = mfItems[0]?.currency || (reg === 'uae' ? 'AED' : 'INR');
+                const isPriv = state.data.settings?.isPrivate;
+
+                html += `
+                    <div onclick="window.openGroupDetails('Mutual Fund', 'Mutual Funds', '${cur}')" class="bg-gradient-to-r from-blue-900/20 via-slate-800/60 to-slate-800/80 backdrop-blur-md p-4 rounded-[1.5rem] flex justify-between items-center border border-blue-500/30 shadow-sm cursor-pointer hover:border-blue-400/60 hover:bg-slate-800 transition-all text-center group">
+                        <div class="flex items-center space-x-4 text-left">
+                            <div class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner bg-blue-500/15 border border-blue-500/30 text-blue-400">
+                                <i data-lucide="pie-chart" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="font-bold text-slate-100 text-sm flex items-center gap-2 tracking-wide">
+                                    Mutual Funds
+                                    <span class="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full text-[9px] font-black">${mfItems.length} Funds</span>
+                                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform"></i>
+                                </p>
+                                <p class="text-[9px] text-blue-400/80 uppercase font-black tracking-widest">Aggregated Portfolio • Tap to View All</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-black text-slate-100 text-base num-font">${isPriv ? '••••' : window.fmtMoney(totalBal, cur)}</p>
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-wider">Total Value</span>
+                        </div>
+                    </div>
+                `;
+            } else if (mfItems.length === 1) {
+                html += window.renderAssetCard(mfItems[0]);
+            }
+
+            // Render all other accounts (Bank Accounts, Cash, Savings, Commodities, Real Estate, Crypto, etc.)
+            html += otherItems.map(a => window.renderAssetCard(a)).join('');
+
+            container.innerHTML = `<div class="space-y-3">${html}</div>`;
         }
         window.renderAssetsList = renderAssetsList;
 
@@ -3166,26 +3264,24 @@
                     t.innerText = 'Asset Registration';
                     c.innerHTML = `
                         <div class="max-w-md mx-auto bg-slate-800/95 backdrop-blur-xl p-8 rounded-[2.5rem] border border-slate-700/80 text-center shadow-2xl">
-                        
-
                             
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">— OR ADD ANY ASSET —</p>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">— REGISTER ASSET OR ACCOUNT —</p>
 
-                            <input type="text" id="an" placeholder="Identifier (e.g. HDFC Gold Fund)" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold mb-4 outline-none focus:border-rose-500 placeholder-slate-500">
+                            <input type="text" id="an" placeholder="Asset Name (e.g. 24K Gold Bar, ADCB Bank, HDFC)" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold mb-4 outline-none focus:border-emerald-500 placeholder-slate-500">
                             
                             <div class="grid grid-cols-2 gap-4 mb-4">
-                                <select id="ac" class="p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center">
+                                <select id="ac" onchange="window.calcCommodityBalance()" class="p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center outline-none">
                                     <option value="AED">AED</option>
                                     <option value="INR">INR</option>
                                 </select>
-                                <select id="at" onchange="window.toggleAssetFields()" class="p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center">
+                                <select id="at" onchange="window.toggleAssetFields()" class="p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center outline-none">
                                     ${state.data.assetTypes.map(ty => `<option value="${ty}">${ty}</option>`).join('')}
                                 </select>
                             </div>
 
-                            <div id="inv-type-container" class="hidden mb-4">
-                                <p class="text-[9px] font-bold text-slate-400 mb-1 uppercase">Investment Type</p>
-                                <select id="inv-type" onchange="window.toggleAssetFields()" class="text-slate-900 w-full p-4 border rounded-xl font-bold text-center bg-slate-50 text-slate-700">
+                            <div id="inv-type-container" class="hidden mb-4 text-left">
+                                <p class="text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest pl-1">Investment Category</p>
+                                <select id="inv-type" onchange="window.toggleAssetFields()" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center outline-none">
                                     <option value="General">General / Stock</option>
                                     <option value="Commodity">Commodity (Gold, Silver...)</option>
                                     <option value="Mutual Fund">Mutual Fund</option>
@@ -3195,66 +3291,80 @@
                             </div>
 
                             <!-- Dynamic Inputs -->
-                            <div id="dynamic-inputs" class="space-y-4 mb-6">
+                            <div id="dynamic-inputs" class="space-y-4 mb-6 text-left">
                                 
                                 <!-- Emergency Fund Target -->
                                 <div id="inp-emf" class="hidden">
-                                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Target Amount (Optional)</label>
-                                    <input type="number" id="emf-target" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-mono" placeholder="Target">
+                                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Target Amount (Optional)</label>
+                                    <input type="number" id="emf-target" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 font-mono" placeholder="Target">
                                 </div>
 
-                                <!-- Default: Balance -->
-                                <div id="inp-balance">
-                                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Current Balance</label>
-                                    <input type="number" id="ab" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 font-mono" placeholder="0.00">
-                                </div>
-                                <div id="inp-balance-note" class="hidden text-[10px] text-slate-400 font-bold text-center mt-1">Enter current available cash in bank/wallet</div>
-
-                                <!-- Commodity -->
+                                <!-- Commodity Inputs -->
                                 <div id="inp-commodity" class="hidden space-y-4">
                                     <div>
-                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Metal Type</label>
-                                        <select id="commodity-type" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs">
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Metal / Commodity Type</label>
+                                        <select id="commodity-type" onchange="window.calcCommodityBalance()" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none">
                                             <option value="Gold">Gold</option>
                                             <option value="Silver">Silver</option>
+                                            <option value="Platinum">Platinum</option>
+                                            <option value="Palladium">Palladium</option>
                                             <option value="Oil">Oil</option>
                                             <option value="Diamond">Diamond</option>
                                         </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Weight in Grams (Optional)</label>
+                                        <input type="number" step="any" id="aw" oninput="window.calcCommodityBalance()" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-amber-500 font-mono placeholder-slate-500" placeholder="e.g. 10">
+                                        <p id="commodity-rate-hint" class="text-[10px] text-amber-400 font-bold mt-1 pl-1"></p>
                                     </div>
                                 </div>
 
                                 <!-- Mutual Fund -->
                                 <div id="inp-fund" class="hidden space-y-4">
-                                    <input type="text" id="mf-cat" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs" placeholder="Category (e.g. Small Cap)">
+                                    <div>
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Fund Category / Name</label>
+                                        <input type="text" id="mf-cat" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-blue-500 placeholder-slate-500" placeholder="Category (e.g. Small Cap, Index Fund)">
+                                    </div>
                                 </div>
 
                                 <!-- Real Estate -->
                                 <div id="inp-re" class="hidden space-y-4">
-                                    <input type="text" id="re-loc" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 text-xs" placeholder="Location (e.g. Dubai Marina)">
+                                    <input type="text" id="re-loc" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-indigo-500 placeholder-slate-500" placeholder="Location (e.g. Dubai Marina)">
                                     <div class="grid grid-cols-2 gap-4">
-                                        <select id="re-type" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs">
+                                        <select id="re-type" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none">
                                             <option value="Residential">Residential</option>
                                             <option value="Commercial">Commercial</option>
                                             <option value="Land">Land</option>
                                         </select>
-                                        <input type="text" id="re-area" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none text-slate-900 text-xs" placeholder="Area (sqft)">
+                                        <input type="text" id="re-area" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none placeholder-slate-500" placeholder="Area (sqft)">
                                     </div>
                                 </div>
 
                                 <!-- Crypto -->
                                 <div id="inp-crypto" class="hidden grid grid-cols-2 gap-4">
-                                    <input type="text" id="cry-sym" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs uppercase" placeholder="Symbol (BTC)">
-                                    <input type="text" id="cry-net" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs" placeholder="Network (ERC20)">
+                                    <input type="text" id="cry-sym" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none uppercase placeholder-slate-500" placeholder="Symbol (BTC)">
+                                    <input type="text" id="cry-net" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none placeholder-slate-500" placeholder="Network (ERC20)">
                                 </div>
 
                                 <!-- Bond/Deposit -->
                                 <div id="inp-bond" class="hidden grid grid-cols-2 gap-4">
-                                    <input type="date" id="bond-date" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs" title="Maturity Date">
-                                    <input type="number" id="bond-rate" class="text-slate-900 w-full p-4 border rounded-xl font-bold bg-slate-50 text-xs" placeholder="Rate %">
+                                    <input type="date" id="bond-date" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none text-xs" title="Maturity Date">
+                                    <input type="number" id="bond-rate" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none placeholder-slate-500" placeholder="Rate %">
                                 </div>
+
+                                <!-- Universal: Current Balance / Value -->
+                                <div id="inp-balance">
+                                    <label id="lbl-balance" class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Current Balance / Value</label>
+                                    <input type="number" step="any" id="ab" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 font-mono placeholder-slate-500" placeholder="0.00">
+                                </div>
+                                <div id="inp-balance-note" class="text-[10px] text-slate-400 font-bold text-center mt-1">Enter current available balance in account</div>
                             </div>
                             <button id="btn-save-acc" onclick="window.saveAccount()" class="w-full bg-emerald-500 text-white p-5 rounded-3xl font-black uppercase text-sm shadow-xl hover:bg-emerald-600 transition-all">Save Account</button>
-                        </div>`; break;
+                        </div>`;
+                    setTimeout(() => {
+                        window.toggleAssetFields();
+                    }, 20);
+                    break;
 
 
                 case 'transaction': t.innerText = 'Data Movement'; c.innerHTML = `
@@ -3285,39 +3395,93 @@
                         </div>
                         <button id="btn-save-tx" onclick="window.saveTransaction()" class="w-full bg-rose-600 hover:bg-rose-700 text-white p-4 rounded-2xl font-black uppercase tracking-wider shadow-lg shadow-rose-600/30 transition-all text-center">Authorize entry</button>
                     </div>`; break;
-                case 'transfer': t.innerText = 'Transfer & Invest'; c.innerHTML = `
-                    <div class="text-slate-100 max-w-3xl mx-auto bg-slate-800 border border-slate-700 p-10 rounded-[3rem] border shadow-2xl text-center">
-                        <div class="grid grid-cols-2 gap-4 mb-6 text-center">
+                case 'transfer': t.innerText = 'Transfer & Remittance'; c.innerHTML = `
+                    <div class="text-slate-100 max-w-2xl mx-auto bg-slate-800/95 border border-slate-700/80 p-6 md:p-8 rounded-[2.5rem] shadow-2xl text-left space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 text-left ml-2 text-center">From (Source)</label>
-                                <select id="ts" onchange="window.toggleTradeFields()" class="w-full p-4 border rounded-xl font-bold text-center text-center">
-                                    ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
+                                <label class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">From (Source)</label>
+                                <select id="ts" onchange="window.updateTransferUI()" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-rose-500 text-sm">
+                                    ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency} ${window.toCurrency(a.balance).toLocaleString()})</option>`).join('')}
                                 </select>
                             </div>
                             <div>
-                                <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 text-left ml-2 text-center">To (Dest)</label>
-                                <select id="ttg" onchange="window.toggleTradeFields()" class="w-full p-4 border rounded-xl font-bold text-center text-center">
-                                    ${state.data.accounts.map(a => `<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
+                                <label class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">To (Destination)</label>
+                                <select id="ttg" onchange="window.updateTransferUI()" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 text-sm">
+                                    ${state.data.accounts.map((a, idx) => `<option value="${a.id}" ${idx === 1 ? 'selected' : ''}>${a.name} (${a.currency} ${window.toCurrency(a.balance).toLocaleString()})</option>`).join('')}
                                 </select>
                             </div>
                         </div>
 
-                        <!-- ASSET TRADE UI REMOVED FOR COST-BASIS ONLY MODE -->
-
-                        <input type="number" id="tamt" oninput="window.calcRemit(this.value)" class="w-full p-6 border-2 rounded-2xl font-black text-3xl text-center mb-4 text-center outline-none focus:border-emerald-500" placeholder="Sending Amount">
-                        <div id="remit-preview" class="text-xs font-black text-emerald-600 mb-6 h-4 text-center"></div>
-                        <input type="text" id="trn" placeholder="Transfer Node / Description" class="w-full p-4 border rounded-xl mb-4 text-center outline-none focus:border-emerald-500">
-                        <div class="mb-6 relative">
-                            <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 text-center">Budget Category (Optional)</label>
-                            <select id="tcat" class="w-full p-4 border rounded-xl font-bold text-center text-center outline-none focus:border-emerald-500 bg-emerald-50/50">
-                                ${window.renderCategoryOptions(true)}
-                            </select>
-                            <p class="text-[9px] text-slate-400 font-bold mt-2 text-center leading-tight px-4">If you select an Investment category, this transfer will count against your Monthly Budget.</p>
+                        <!-- Sending Amount -->
+                        <div>
+                            <label id="lbl-send-amount" class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">Sending Amount</label>
+                            <div class="relative">
+                                <input type="number" step="any" id="tamt" oninput="window.calcTransferEstimate('send')" class="w-full p-5 border border-slate-700 bg-slate-900 text-white rounded-2xl font-black text-2xl md:text-3xl text-center outline-none focus:border-emerald-500 font-mono placeholder-slate-600" placeholder="0.00">
+                                <span id="badge-send-cur" class="absolute right-4 top-1/2 -translate-y-1/2 px-3 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-black">AED</span>
+                            </div>
                         </div>
-                        <div id="transfer-error-msg" class="hidden text-red-500 text-xs font-bold mt-2 mb-2"></div>
-                        <button id="btn-do-transfer" onclick="window.doTransfer()" class="w-full bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase shadow-xl text-center">Authorize Transfer</button>
-                        <p class="mt-4 text-[10px] text-slate-400 font-bold">Use this to move funds to Investment Accounts or Remit.</p>
-                    </div>`; break;
+
+                        <!-- Cross-Currency Remittance Box (AED -> INR or INR -> AED) -->
+                        <div id="cross-currency-box" class="p-5 bg-gradient-to-br from-indigo-950/40 via-slate-900/80 to-slate-900/90 border border-indigo-500/30 rounded-2xl space-y-4">
+                            <div class="flex items-center justify-between border-b border-indigo-500/20 pb-2.5">
+                                <div class="flex items-center gap-2 text-indigo-400 font-black text-xs uppercase tracking-wider">
+                                    <i data-lucide="arrow-left-right" class="w-4 h-4"></i> Cross-Currency Conversion
+                                </div>
+                                <span id="rate-source-tag" class="text-[9px] font-bold text-slate-400 uppercase tracking-widest bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-700">Custom Rate Enabled</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-[9px] font-black uppercase text-slate-400 block mb-1 pl-1">Exchange Rate (1 AED = ? INR)</label>
+                                    <input type="number" step="0.0001" id="tx-rate" oninput="window.calcTransferEstimate('rate')" class="w-full p-3.5 border border-slate-700 bg-slate-900 text-amber-300 font-mono font-bold rounded-xl outline-none focus:border-amber-400 text-sm" placeholder="e.g. 22.85">
+                                </div>
+                                <div>
+                                    <label id="lbl-received-amount" class="text-[9px] font-black uppercase text-slate-400 block mb-1 pl-1">Received INR Amount (Credited)</label>
+                                    <input type="number" step="any" id="tx-received" oninput="window.calcTransferEstimate('receive')" class="w-full p-3.5 border border-slate-700 bg-slate-900 text-emerald-400 font-mono font-bold rounded-xl outline-none focus:border-emerald-400 text-sm" placeholder="0.00">
+                                </div>
+                            </div>
+
+                            <!-- Optional Transfer Fee -->
+                            <div>
+                                <div class="flex justify-between items-center mb-1 pl-1">
+                                    <label id="lbl-transfer-fee" class="text-[9px] font-black uppercase text-slate-400">Transfer / Exchange Fee (Optional)</label>
+                                    <span class="text-[8px] font-bold text-slate-500">Debited as bank fee</span>
+                                </div>
+                                <input type="number" step="any" id="tx-fee" oninput="window.calcTransferEstimate('fee')" class="w-full p-3 border border-slate-700 bg-slate-900 text-slate-300 font-mono font-bold rounded-xl outline-none focus:border-rose-500 text-sm" placeholder="0.00">
+                            </div>
+
+                            <!-- Live Conversion Summary -->
+                            <div id="remit-summary-pill" class="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-center text-xs font-bold text-indigo-300">
+                                Enter sending amount to calculate
+                            </div>
+                        </div>
+
+                        <!-- Description & Category -->
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">Transfer Note / Description</label>
+                                <input type="text" id="trn" placeholder="e.g. Monthly Home Remittance, Botim Transfer, Savings" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 text-sm placeholder-slate-600">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">Budget Category (Optional)</label>
+                                <select id="tcat" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 text-sm">
+                                    ${window.renderCategoryOptions(true)}
+                                </select>
+                                <p class="text-[9px] text-slate-500 font-bold mt-1 pl-1">If you select an Expense/Investment category, this transfer will count against your Monthly Envelope Budget.</p>
+                            </div>
+                        </div>
+
+                        <div id="transfer-error-msg" class="hidden p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold rounded-xl text-center"></div>
+
+                        <button id="btn-do-transfer" onclick="window.doTransfer()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white p-5 rounded-2xl font-black uppercase text-sm shadow-xl shadow-emerald-500/20 transition-all text-center">
+                            Authorize Transfer
+                        </button>
+                    </div>`;
+                    setTimeout(() => {
+                        window.updateTransferUI();
+                        lucide.createIcons();
+                    }, 20);
+                    break;
                 case 'debt': t.innerText = 'Liability Management'; c.innerHTML = window.renderDebtUI(); break;
                 case 'settings': t.innerText = 'Configuration Hub'; c.innerHTML = window.renderSettingsUI(); break;
                 case 'reports': t.innerText = 'Summaries'; c.innerHTML = window.renderDistributionInsights(); break;
@@ -4236,6 +4400,56 @@
 
             // HTML MERGE
             const currSym = window.chartCurrency === 'AED' ? 'AED' : '₹';
+            
+            // Get Personal Credit Score Stats
+            const cs = (typeof window.getPersonalCreditScore === 'function') ? window.getPersonalCreditScore() : null;
+            let creditScoreHtml = '';
+            if (cs) {
+                const scorePct = Math.min(100, Math.max(0, ((cs.score - 300) / 600) * 100));
+                const strokeDashoffset = 283 - (283 * scorePct) / 100;
+                let scoreTextColor = cs.color === 'emerald' ? 'text-emerald-400' : (cs.color === 'teal' ? 'text-teal-400' : (cs.color === 'indigo' ? 'text-indigo-400' : (cs.color === 'amber' ? 'text-amber-400' : 'text-rose-400')));
+                let themeGradient = cs.color === 'emerald' ? 'from-emerald-500/20 via-slate-800 to-slate-900 border-emerald-500/30' : (cs.color === 'teal' ? 'from-teal-500/20 via-slate-800 to-slate-900 border-teal-500/30' : (cs.color === 'indigo' ? 'from-indigo-500/20 via-slate-800 to-slate-900 border-indigo-500/30' : (cs.color === 'amber' ? 'from-amber-500/20 via-slate-800 to-slate-900 border-amber-500/30' : 'from-rose-500/20 via-slate-800 to-slate-900 border-rose-500/30')));
+
+                creditScoreHtml = `
+                    <!-- 1. CREDIT SCORE & FINANCIAL HEALTH HUB -->
+                    <div class="bg-gradient-to-br ${themeGradient} border-2 rounded-[2.5rem] p-6 md:p-8 text-center shadow-2xl backdrop-blur-md relative overflow-hidden text-left mb-6">
+                        <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div class="relative w-36 h-36 shrink-0 flex items-center justify-center mx-auto md:mx-0">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="45" fill="transparent" stroke="#1e293b" stroke-width="8" stroke-dasharray="283" stroke-dashoffset="0"></circle>
+                                    <circle cx="50" cy="50" r="45" fill="transparent" stroke="currentColor" stroke-width="8" stroke-dasharray="283" stroke-dashoffset="${strokeDashoffset}" stroke-linecap="round" class="${scoreTextColor} transition-all duration-1000"></circle>
+                                </svg>
+                                <div class="absolute flex flex-col items-center justify-center text-center">
+                                    <span class="text-3xl font-black text-white num-font leading-none">${cs.score}</span>
+                                    <span class="text-[9px] font-black uppercase tracking-widest ${scoreTextColor} mt-1">${cs.tier}</span>
+                                    <span class="text-[8px] font-bold text-slate-400">300 - 900</span>
+                                </div>
+                            </div>
+
+                            <div class="flex-1 text-center md:text-left space-y-2">
+                                <div class="inline-flex items-center gap-2 bg-slate-900/80 px-3.5 py-1 rounded-full border border-slate-700/80 mb-1">
+                                    <i data-lucide="award" class="w-3.5 h-3.5 ${scoreTextColor}"></i>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-300">Financial Health Index • Grade ${cs.grade}</span>
+                                </div>
+                                <h3 class="text-xl md:text-2xl font-black text-white">Credit Score & Health Diagnostic</h3>
+                                <p class="text-xs font-bold text-slate-300 max-w-xl">${cs.statusSummary}</p>
+                                
+                                <div class="pt-2 flex flex-wrap gap-2 justify-center md:justify-start">
+                                    <span class="text-[9px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Payment: ${cs.pillars.paymentHistory.pct}%</span>
+                                    <span class="text-[9px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Debt Ratio: ${cs.pillars.debtRatio.ratio}%</span>
+                                    <span class="text-[9px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Runway: ~${cs.pillars.runway.months} mo</span>
+                                    <span class="text-[9px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Wealth Rate: ${cs.pillars.wealthRate.rate}%</span>
+                                </div>
+                            </div>
+
+                            <button onclick="window.openModal('credit_score')" class="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-2xl text-xs font-black uppercase tracking-wider shrink-0 transition-all flex items-center gap-2 shadow-lg">
+                                <i data-lucide="activity" class="w-4 h-4 text-indigo-400"></i> Full Diagnostics
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
             c.innerHTML = `
             <div class="space-y-8 py-4">
                 
@@ -4247,7 +4461,8 @@
                     </div>
                 </div>
 
-                <!-- 1. HEALTH SCORE (REMOVED) -->
+                <!-- 1. CREDIT SCORE EMBED -->
+                ${creditScoreHtml}
 
                 <!-- 6. CASHFLOW WATERFALL -->
                 <div class="text-slate-900 bg-white p-6 rounded-[2.5rem] border shadow-sm text-center">
@@ -4814,59 +5029,78 @@
 
         // Helper to Calc DTI & Health
         window.renderFinancialHealth = function () {
-            const r = state.data.settings.rate;
+            const r = state.data.settings?.rate || 22.75;
+            
             // 1. Calc Monthly Fixed Debt Obligations
             let monthlyDebt = 0;
+            let activePayableCount = 0;
+
             // BNPLs (Monthly payments)
-            state.data.debts.filter(d => d.isBnpl && !d.settled).forEach(d => {
-                // Amortize remaining? Or just take next installment?
-                // Let's take the first unpaid installment amount as "this month's load"
-                const next = d.schedule.find(s => !s.paid);
-                if (next) monthlyDebt += (parseFloat(next.amount) * (d.currency === 'AED' ? 1 : (1 / r)));
-            });
-            // Personal Debts due this month
-            const now = new Date();
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            state.data.debts.filter(d => !d.isBnpl && d.type === 'payable' && !d.settled && new Date(d.repaymentDate) <= endOfMonth).forEach(d => {
-                monthlyDebt += (parseFloat(d.amount) * (d.currency === 'AED' ? 1 : (1 / r)));
+            (state.data.debts || []).filter(d => (d.isBnpl || d.subtype === 'bnpl') && !d.settled).forEach(d => {
+                const next = (d.schedule || []).find(s => !s.paid);
+                if (next) {
+                    monthlyDebt += (parseFloat(next.amount) * (d.currency === 'AED' ? 1 : (1 / r)));
+                    activePayableCount++;
+                } else if (d.currentAmount || d.amount) {
+                    monthlyDebt += (parseFloat(d.currentAmount || d.amount) * (d.currency === 'AED' ? 1 : (1 / r)));
+                    activePayableCount++;
+                }
             });
 
-            // 2. Calc Income (Avg 3 mo)
-            // Reuse BNPL Analyzer logic or simple fallback
-            const income = 15000; // Placeholder until we have robust income tracking. 
-            // Or use Settings if available?
-            // Let's rely on a hard-coded fallback or minimal settings for now to show UI.
-            // Ideally we prompt user for "Monthly Income".
+            // Personal Borrowings (Payables)
+            (state.data.debts || []).filter(d => !d.isBnpl && d.subtype !== 'bnpl' && d.type === 'payable' && !d.settled).forEach(d => {
+                const amt = parseFloat(d.amount) || 0;
+                monthlyDebt += (amt * (d.currency === 'AED' ? 1 : (1 / r)));
+                activePayableCount++;
+            });
+
+            // 2. Calc Income (Salary Setting, Recent Income, or Fallback)
+            let income = parseFloat(state.data.settings?.expectedSalary) || 0;
+            if (income === 0) {
+                const now = new Date();
+                const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                const recentInc = (state.data.transactions || []).filter(t => t.type === 'income' && new Date(t.date) >= d30).reduce((s, t) => s + (parseFloat(t.amount) * (t.currency === 'AED' ? 1 : 1 / r)), 0);
+                income = recentInc > 0 ? recentInc : 15000;
+            }
 
             const dti = income > 0 ? (monthlyDebt / income) * 100 : 0;
 
-            let zone = 'Healthy';
+            let zone = 'Healthy (Debt Free)';
             let color = 'emerald';
-            if (dti > 30) { zone = 'Caution'; color = 'amber'; }
-            if (dti > 50) { zone = 'Danger'; color = 'red'; }
+            if (monthlyDebt > 0) {
+                if (dti <= 20) { zone = 'Low Debt Load'; color = 'emerald'; }
+                else if (dti <= 35) { zone = 'Moderate Burden'; color = 'amber'; }
+                else { zone = 'High Debt Alert'; color = 'rose'; }
+            }
+
+            const isDebtFree = monthlyDebt <= 0.01;
 
             return `
-                <div class="mb-6 bg-slate-900 rounded-[2.5rem] p-6 text-white relative overflow-hidden text-center shadow-lg">
+                <div class="mb-6 bg-slate-900 rounded-[2.5rem] p-6 text-white relative overflow-hidden text-center shadow-lg border border-slate-800">
                     <div class="relative z-10 flex justify-between items-center">
                         <div class="text-left">
                             <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Debt-to-Income Health</p>
-                            <h2 class="text-2xl font-black text-${color}-400">${dti.toFixed(1)}% <span class="text-xs text-white opacity-60 font-sans font-bold">(${zone})</span></h2>
-                            <p class="text-[9px] text-slate-500 font-bold mt-1">Monthly Obligations: AED ${Math.round(monthlyDebt).toLocaleString()}</p>
+                            <h2 class="text-2xl font-black ${color === 'emerald' ? 'text-emerald-400' : (color === 'amber' ? 'text-amber-400' : 'text-rose-400')} num-font">
+                                ${dti.toFixed(1)}% <span class="text-xs text-white opacity-70 font-sans font-bold">(${isDebtFree ? 'Debt Free' : zone})</span>
+                            </h2>
+                            <p class="text-[9px] text-slate-400 font-bold mt-1">
+                                ${isDebtFree ? 'Monthly Obligations: AED 0 • No active liabilities' : `Monthly Obligations: AED ${Math.round(monthlyDebt).toLocaleString()} (${activePayableCount} active)`}
+                            </p>
                         </div>
                         
                         <!-- Gauge Visual -->
-                        <div class="w-16 h-16 relative">
+                        <div class="w-16 h-16 relative shrink-0">
                             <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#334155" stroke-width="4" />
-                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="${color === 'emerald' ? '#34d399' : (color === 'amber' ? '#fbbf24' : '#f87171')}" stroke-width="4" stroke-dasharray="${dti}, 100" />
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1e293b" stroke-width="4" />
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="${isDebtFree ? '#10b981' : (color === 'emerald' ? '#10b981' : (color === 'amber' ? '#f59e0b' : '#f43f5e'))}" stroke-width="4" stroke-dasharray="${isDebtFree ? 100 : Math.min(100, Math.round(dti))}, 100" stroke-linecap="round" />
                             </svg>
                             <div class="absolute inset-0 flex items-center justify-center">
-                                <i data-lucide="${color === 'emerald' ? 'shield-check' : 'alert-triangle'}" class="w-6 h-6 text-${color}-400"></i>
+                                <i data-lucide="${color === 'rose' ? 'alert-triangle' : 'shield-check'}" class="w-6 h-6 ${color === 'rose' ? 'text-rose-400' : 'text-emerald-400'}"></i>
                             </div>
                         </div>
                     </div>
                 </div>
-             `;
+            `;
         };
 
         // Helper for Timeline
@@ -5499,19 +5733,27 @@
                     return (new Date(d.repaymentDate) - now) / (1000 * 60 * 60 * 24) < 3 && !d.settled;
                 });
 
+                const trust = (typeof window.getContactTrustScore === 'function') ? window.getContactTrustScore(p.name) : { score: 100, tier: 'Clean Slate', color: 'emerald' };
+                const trustBadgeColor = trust.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : (trust.color === 'teal' ? 'bg-teal-500/10 text-teal-400 border-teal-500/30' : (trust.color === 'amber' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'));
+
                 return `<div class="bg-slate-900/40 rounded-[1.5rem] border border-slate-700/50 shadow-sm relative overflow-hidden group transition-all hover:border-slate-500/50 cursor-pointer flex flex-col h-full hover:-translate-y-1" onclick="window.navDebt('person_ledger', '${p.name}')">
                     
                     <div class="p-5 flex flex-col relative z-10 flex-grow text-left">
                         ${dueSoon ? `<div class="absolute top-4 right-4 w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>` : ''}
                         
-                        <!-- Top Left Icon -->
-                        <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
-                            <i data-lucide="user" class="w-5 h-5"></i>
+                        <!-- Top Left Icon & Trust Rating Badge -->
+                        <div class="flex justify-between items-center mb-4">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                                <i data-lucide="user" class="w-5 h-5"></i>
+                            </div>
+                            <span class="text-[8px] font-black uppercase px-2.5 py-1 rounded-full border ${trustBadgeColor}">
+                                ⭐ ${trust.score}/100
+                            </span>
                         </div>
                         
                         <!-- Name & Subtitle -->
                         <h3 class="font-black text-slate-100 text-lg leading-none mb-1 truncate">${p.name}</h3>
-                        <span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest mb-6 block">Personal Contact</span>
+                        <span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest mb-4 block">${trust.tier}</span>
                         
                         <!-- 3 Rows (Staff Ledger Style) -->
                         <div class="space-y-3 mt-auto">
@@ -5880,16 +6122,45 @@
                         <h3 class="text-xl md:text-2xl font-black text-slate-100 flex-grow">Contact Profile</h3>
                     </div>
                     
-                    <!-- PROFILE HERO CARD -->
+                    <!-- PROFILE HERO CARD WITH TRUST SCORE -->
                     <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[2.5rem] border border-slate-700/60 p-8 text-center relative overflow-hidden shadow-2xl">
-                        <div class="w-20 h-20 mx-auto rounded-3xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4 shadow-inner">
-                            <i data-lucide="user" class="w-10 h-10"></i>
-                        </div>
-                        <h2 class="text-3xl font-black text-slate-100 mb-1 tracking-tight">${pName}</h2>
-                        <div class="inline-flex items-center gap-1 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50 mb-6">
-                            <i data-lucide="shield" class="w-3 h-3 text-indigo-400"></i>
-                            <span class="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Trust Score: ${window.calcTrustScore(pName)}</span>
-                        </div>
+                        ${(() => {
+                            const t = (typeof window.getContactTrustScore === 'function') ? window.getContactTrustScore(pName) : { score: 100, tier: 'Clean Slate', color: 'emerald' };
+                            const tBadgeColor = t.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : (t.color === 'teal' ? 'bg-teal-500/10 text-teal-400 border-teal-500/30' : (t.color === 'amber' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'));
+                            const tStats = t.stats || {};
+                            const repaymentRate = tStats.totalLent > 0 ? Math.round((tStats.totalRepaid / tStats.totalLent) * 100) : 100;
+                            
+                            return `
+                                <div class="w-20 h-20 mx-auto rounded-3xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4 shadow-inner">
+                                    <i data-lucide="user" class="w-10 h-10"></i>
+                                </div>
+                                <h2 class="text-3xl font-black text-slate-100 mb-1 tracking-tight">${pName}</h2>
+                                <div class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border ${tBadgeColor} mb-6">
+                                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                                    <span class="text-[10px] font-black uppercase tracking-wider">Peer Trust Score: ${t.score}/100 • ${t.tier}</span>
+                                </div>
+
+                                <!-- Trust & Reliability KPI Strip -->
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto mb-6 text-left">
+                                    <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50">
+                                        <p class="text-[8px] font-bold text-slate-400 uppercase">Total Lent</p>
+                                        <p class="text-xs font-black text-slate-200 num-font mt-0.5">${(tStats.totalLent || 0).toLocaleString()} AED</p>
+                                    </div>
+                                    <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50">
+                                        <p class="text-[8px] font-bold text-slate-400 uppercase">Total Repaid</p>
+                                        <p class="text-xs font-black text-emerald-400 num-font mt-0.5">${(tStats.totalRepaid || 0).toLocaleString()} AED</p>
+                                    </div>
+                                    <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50">
+                                        <p class="text-[8px] font-bold text-slate-400 uppercase">Pay Rate</p>
+                                        <p class="text-xs font-black text-indigo-400 num-font mt-0.5">${repaymentRate}%</p>
+                                    </div>
+                                    <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50">
+                                        <p class="text-[8px] font-bold text-slate-400 uppercase">Overdues</p>
+                                        <p class="text-xs font-black ${tStats.overdueCount > 0 ? 'text-rose-400' : 'text-emerald-400'} num-font mt-0.5">${tStats.overdueCount || 0} active</p>
+                                    </div>
+                                </div>
+                            `;
+                        })()}
                         
                         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Overall Net Balance</p>
                         <p class="text-4xl font-black ${netColor} num-font tracking-tighter">${Math.abs(virtualNet).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} <span class="text-lg text-slate-400">AED</span></p>
@@ -6851,28 +7122,101 @@
             window.setBtnLoading('btn-commit-debt', false);
         };
 
-        // --- ASSET SELL/BUY FLOW HELPERS ---
+        // --- TRANSFER & REMITTANCE HELPERS ---
         window.toggleTradeFields = function () {
-            // REMOVED: Asset quantities/NAV inputs are no longer required in Cost-Basis mode.
+            window.updateTransferUI();
         };
 
-        window.calcSellTotal = function () {
-            // REMOVED
+        window.updateTransferUI = function () {
+            const sId = document.getElementById('ts')?.value;
+            const tId = document.getElementById('ttg')?.value;
+            const sAcc = state.data.accounts.find(a => a.id === sId);
+            const tAcc = state.data.accounts.find(a => a.id === tId);
+            const rate = state.data.settings?.rate || 22.75;
+
+            const sendBadge = document.getElementById('badge-send-cur');
+            const lblSend = document.getElementById('lbl-send-amount');
+            const crossBox = document.getElementById('cross-currency-box');
+            const rateInput = document.getElementById('tx-rate');
+            const lblReceived = document.getElementById('lbl-received-amount');
+            const lblFee = document.getElementById('lbl-transfer-fee');
+
+            const sCur = sAcc ? sAcc.currency : 'AED';
+            const tCur = tAcc ? tAcc.currency : 'INR';
+
+            if (sendBadge) sendBadge.innerText = sCur;
+            if (lblSend) lblSend.innerText = `Sending Amount (${sCur})`;
+
+            if (sCur !== tCur) {
+                if (crossBox) crossBox.classList.remove('hidden');
+                if (rateInput && (!rateInput.value || parseFloat(rateInput.value) <= 0)) {
+                    rateInput.value = sCur === 'AED' ? rate.toFixed(2) : (1 / rate).toFixed(4);
+                }
+                if (lblReceived) lblReceived.innerText = `Received ${tCur} Amount (Credited)`;
+                if (lblFee) lblFee.innerText = `Transfer / Exchange Fee (${sCur}) (Optional app charge / fee)`;
+                window.calcTransferEstimate('send');
+            } else {
+                if (crossBox) crossBox.classList.add('hidden');
+            }
+        };
+
+        window.calcTransferEstimate = function (trigger = 'send') {
+            const sId = document.getElementById('ts')?.value;
+            const tId = document.getElementById('ttg')?.value;
+            const sAcc = state.data.accounts.find(a => a.id === sId);
+            const tAcc = state.data.accounts.find(a => a.id === tId);
+            const defaultRate = state.data.settings?.rate || 22.75;
+
+            const sCur = sAcc ? sAcc.currency : 'AED';
+            const tCur = tAcc ? tAcc.currency : 'INR';
+
+            const sendInput = document.getElementById('tamt');
+            const rateInput = document.getElementById('tx-rate');
+            const receiveInput = document.getElementById('tx-received');
+            const feeInput = document.getElementById('tx-fee');
+            const summaryPill = document.getElementById('remit-summary-pill');
+
+            const sendVal = parseFloat(sendInput?.value) || 0;
+            let rateVal = parseFloat(rateInput?.value) || (sCur === 'AED' ? defaultRate : 1 / defaultRate);
+            let receiveVal = parseFloat(receiveInput?.value) || 0;
+            const feeVal = parseFloat(feeInput?.value) || 0;
+
+            if (sCur === tCur) {
+                return;
+            }
+
+            if (trigger === 'send' || trigger === 'rate' || trigger === 'fee') {
+                if (sendVal > 0 && rateVal > 0) {
+                    receiveVal = sendVal * rateVal;
+                    if (receiveInput) receiveInput.value = receiveVal.toFixed(2);
+                } else if (sendVal === 0 && receiveInput) {
+                    receiveInput.value = '';
+                }
+            } else if (trigger === 'receive') {
+                if (sendVal > 0 && receiveVal > 0) {
+                    rateVal = receiveVal / sendVal;
+                    if (rateInput) rateInput.value = rateVal.toFixed(4);
+                }
+            }
+
+            if (summaryPill) {
+                if (sendVal > 0) {
+                    const totalDebit = sendVal + feeVal;
+                    summaryPill.innerHTML = `
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span><b>Debit:</b> ${sCur} ${totalDebit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}${feeVal > 0 ? ` (${sendVal.toLocaleString()} + ${feeVal.toLocaleString()} fee)` : ''}</span>
+                            <span class="text-emerald-400"><b>Credit:</b> ${tCur} ${receiveVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            <span class="text-amber-300 text-[10px]">1 ${sCur} = ${rateVal.toFixed(2)} ${tCur}</span>
+                        </div>
+                    `;
+                } else {
+                    summaryPill.innerText = `Enter ${sCur} amount to calculate received ${tCur}`;
+                }
+            }
         };
 
         window.calcRemit = function (v) {
-            const sId = document.getElementById('ts').value, tId = document.getElementById('ttg').value;
-            const sAcc = state.data.accounts.find(a => a.id === sId), tAcc = state.data.accounts.find(a => a.id === tId);
-            const rate = state.data.settings.rate;
-            let est = 0;
-            if (sAcc && tAcc) {
-                if (sAcc.currency === tAcc.currency) est = parseFloat(v);
-                else if (sAcc.currency === 'AED' && tAcc.currency === 'INR') est = parseFloat(v) * rate;
-                else if (sAcc.currency === 'INR' && tAcc.currency === 'AED') est = parseFloat(v) / rate;
-                else est = parseFloat(v);
-            }
-            const el = document.getElementById('remit-preview');
-            if (el) el.innerText = `Estimate: ${est.toFixed(2)} ${tAcc ? tAcc.currency : ''} `;
+            window.calcTransferEstimate('send');
         };
 
         window.setT = function (t) {
@@ -6893,70 +7237,124 @@
             }
         };
 
+        window.calcCommodityBalance = function () {
+            const at = document.getElementById('at')?.value;
+            const invType = document.getElementById('inv-type')?.value;
+            if (at !== 'Commodity' && !(at === 'Investment' && invType === 'Commodity')) return;
+
+            const metal = document.getElementById('commodity-type')?.value || 'Gold';
+            const currency = document.getElementById('ac')?.value || 'AED';
+            const weight = parseFloat(document.getElementById('aw')?.value) || 0;
+            const hintEl = document.getElementById('commodity-rate-hint');
+            
+            // Get Rate per gram
+            let rate = 0;
+            if (currency === 'AED') {
+                rate = (state.data.commodityRatesAED && state.data.commodityRatesAED[metal]) ? state.data.commodityRatesAED[metal] : (metal === 'Gold' ? 315 : (metal === 'Silver' ? 3.5 : 0));
+            } else {
+                rate = (state.data.commodityRates && state.data.commodityRates[metal]) ? state.data.commodityRates[metal] : (metal === 'Gold' ? 7200 : (metal === 'Silver' ? 90 : 0));
+            }
+
+            if (hintEl) {
+                if (rate > 0) {
+                    hintEl.innerText = `Current rate: ${currency} ${rate}/g${weight > 0 ? ` • Est. Value: ${currency} ${(rate * weight).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}`;
+                } else {
+                    hintEl.innerText = '';
+                }
+            }
+
+            // If weight is entered and rate is available, auto-populate the balance field
+            const balInput = document.getElementById('ab');
+            if (balInput && weight > 0 && rate > 0) {
+                balInput.value = (weight * rate).toFixed(2);
+            }
+        };
+
         window.toggleAssetFields = function () {
-            const type = document.getElementById('at').value;
-            const invType = document.getElementById('inv-type').value;
+            const type = document.getElementById('at')?.value;
+            const invType = document.getElementById('inv-type')?.value;
 
             // Toggle Secondary Dropdown logic
             const isInv = type === 'Investment';
-            document.getElementById('inv-type-container').classList.toggle('hidden', !isInv);
+            const invContainer = document.getElementById('inv-type-container');
+            if (invContainer) invContainer.classList.toggle('hidden', !isInv);
 
-            // Hide All First
-            ['inp-balance', 'inp-balance-note', 'inp-commodity', 'inp-fund', 'inp-re', 'inp-crypto', 'inp-bond', 'inp-emf'].forEach(id => {
+            // Hide All Dynamic First
+            ['inp-commodity', 'inp-fund', 'inp-re', 'inp-crypto', 'inp-bond', 'inp-emf'].forEach(id => {
                 document.getElementById(id)?.classList.add('hidden');
             });
 
-            // Logic Tree
+            // Balance note & label customization
+            const lblBal = document.getElementById('lbl-balance');
+            const noteBal = document.getElementById('inp-balance-note');
+            const balDiv = document.getElementById('inp-balance');
+            if (balDiv) balDiv.classList.remove('hidden'); // ALWAYS visible for all account types!
+
             if (type === 'Real Estate') {
-                document.getElementById('inp-balance').classList.remove('hidden');
-                document.getElementById('inp-re').classList.remove('hidden');
+                document.getElementById('inp-re')?.classList.remove('hidden');
+                if (lblBal) lblBal.innerText = 'Property Valuation';
+                if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter total estimated property market value'; }
             }
             else if (isInv) {
-                // Investment Sub-logic
-                if (invType === 'Commodity') document.getElementById('inp-commodity').classList.remove('hidden');
-                else if (invType === 'Mutual Fund') document.getElementById('inp-fund').classList.remove('hidden');
+                if (invType === 'Commodity') {
+                    document.getElementById('inp-commodity')?.classList.remove('hidden');
+                    if (lblBal) lblBal.innerText = 'Total Valuation / Cost';
+                    if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Auto-calculated from weight or enter manual total value'; }
+                    window.calcCommodityBalance();
+                }
+                else if (invType === 'Mutual Fund') {
+                    document.getElementById('inp-fund')?.classList.remove('hidden');
+                    if (lblBal) lblBal.innerText = 'Invested / Current Fund Value';
+                    if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter initial invested amount or current fund value'; }
+                }
                 else if (invType === 'Crypto') {
-                    document.getElementById('inp-balance').classList.remove('hidden');
-                    document.getElementById('inp-crypto').classList.remove('hidden');
+                    document.getElementById('inp-crypto')?.classList.remove('hidden');
+                    if (lblBal) lblBal.innerText = 'Total Crypto Value';
+                    if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter total current crypto holding value'; }
                 }
                 else if (invType === 'Bond') {
-                    document.getElementById('inp-balance').classList.remove('hidden');
-                    document.getElementById('inp-bond').classList.remove('hidden');
+                    document.getElementById('inp-bond')?.classList.remove('hidden');
+                    if (lblBal) lblBal.innerText = 'Principal / Deposit Amount';
+                    if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter deposit principal amount'; }
                 }
-                else document.getElementById('inp-balance').classList.remove('hidden'); // General Stock
+                else {
+                    if (lblBal) lblBal.innerText = 'Investment Value / Initial Amount';
+                    if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter current value or invested amount'; }
+                }
             }
             else if (type === 'Emergency Fund') {
-                document.getElementById('inp-balance').classList.remove('hidden');
-                document.getElementById('inp-emf').classList.remove('hidden');
+                document.getElementById('inp-emf')?.classList.remove('hidden');
+                if (lblBal) lblBal.innerText = 'Current Saved Balance';
+                if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter current liquid emergency funds already saved'; }
             }
             else if (type === 'Bank Account') {
-                document.getElementById('inp-balance').classList.remove('hidden');
-                document.getElementById('inp-balance-note').classList.remove('hidden');
+                if (lblBal) lblBal.innerText = 'Current Account Balance';
+                if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter available liquid cash in bank'; }
             }
             else {
-                // Cash, Savings, etc.
-                document.getElementById('inp-balance').classList.remove('hidden');
+                if (lblBal) lblBal.innerText = 'Current Balance';
+                if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter current cash/wallet balance'; }
             }
         };
 
         window.saveAccount = async function () {
-            const n = document.getElementById('an')?.value;
+            const n = document.getElementById('an')?.value?.trim();
             const c = document.getElementById('ac')?.value || 'AED';
             let t = document.getElementById('at')?.value;
             // Resolve Nested Type
             if (t === 'Investment') {
-                t = document.getElementById('inv-type').value;
+                t = document.getElementById('inv-type')?.value || 'General';
                 if (t === 'General') t = 'Investment'; // Fallback to generic
             }
 
-            const bal = parseFloat(document.getElementById('ab').value) || 0;
+            const bal = parseFloat(document.getElementById('ab')?.value) || 0;
             const w = parseFloat(document.getElementById('aw')?.value) || 0;
             const u = parseFloat(document.getElementById('au')?.value) || 0;
             const code = document.getElementById('asc')?.value;
             const emfTarget = document.getElementById('emf-target') ? parseFloat(document.getElementById('emf-target').value) : null;
 
             // Capture Extra Fields
-            const subtype = t === 'Commodity' ? document.getElementById('commodity-type')?.value :
+            let subtype = (t === 'Commodity') ? (document.getElementById('commodity-type')?.value || 'Gold') :
                 (t === 'Asset' ? 'General' : null);
 
             const category = document.getElementById('mf-cat')?.value || document.getElementById('re-type')?.value || 'General';
@@ -6966,13 +7364,23 @@
             const crypto = { sym: document.getElementById('cry-sym')?.value, net: document.getElementById('cry-net')?.value };
             const collectible = { brand: document.getElementById('col-brand')?.value, cond: document.getElementById('col-cond')?.value };
 
-            if (!n) return;
+            if (!n) {
+                window.showToast("Please enter an asset identifier/name", "error");
+                return;
+            }
             window.setBtnLoading('btn-save-acc', true);
 
             const newAcc = {
-                id: window.genId(), name: n, currency: c, type: t,
-                balance: bal, weight: w, units: u, schemeCode: code,
-                subtype: subtype, category: category,
+                id: window.genId(),
+                name: n,
+                currency: c,
+                type: t,
+                balance: bal,
+                weight: w,
+                units: u,
+                schemeCode: code,
+                subtype: subtype,
+                category: category,
                 details: { location, area, ...vehicle, ...crypto, ...collectible }
             };
             if (t === 'Emergency Fund' && !isNaN(emfTarget) && emfTarget !== null) {
@@ -6982,9 +7390,9 @@
             }
 
             if (t === 'Commodity') {
-                newAcc.subtype = document.getElementById('asub')?.value || document.getElementById('commodity-type')?.value || 'Gold';
+                newAcc.subtype = document.getElementById('commodity-type')?.value || 'Gold';
             } else if (t === 'Mutual Fund') {
-                newAcc.category = document.getElementById('acat')?.value || 'Equity';
+                newAcc.category = document.getElementById('mf-cat')?.value || 'Equity';
             }
 
             if (bal !== 0) {
@@ -7006,11 +7414,17 @@
 
             state.data.accounts.push(newAcc);
 
-            // Mutual Fund fetch removed per cash-only logic
-
-            await updateDb();
+            try {
+                await window.updateDb();
+            } catch (err) {
+                console.error("Error saving account to DB:", err);
+            }
+            
             window.setBtnLoading('btn-save-acc', false);
-            closeModal();
+            window.closeModal();
+            window.showToast(`Asset "${n}" added successfully!`, "success");
+            window.recalculateBalances();
+            window.renderApp();
         };
 
         window.saveTransaction = async function (txData) {
@@ -7101,11 +7515,17 @@
         };
 
         window.doTransfer = async function () {
-            const sId = document.getElementById('ts').value, tId = document.getElementById('ttg').value, val = parseFloat(document.getElementById('tamt').value), n = document.getElementById('trn').value;
+            const sId = document.getElementById('ts')?.value;
+            const tId = document.getElementById('ttg')?.value;
+            const val = parseFloat(document.getElementById('tamt')?.value);
+            const n = document.getElementById('trn')?.value?.trim() || 'Fund Transfer';
             const tCat = (document.getElementById('tcat') ? document.getElementById('tcat').value : '') || 'Transfer';
-            if (!sId || !tId || isNaN(val)) return;
 
-            // Security: Prevent negative amounts
+            if (!sId || !tId || isNaN(val)) {
+                window.showToast("Please enter a valid transfer amount", "error");
+                return;
+            }
+
             if (val <= 0) {
                 window.showToast("Transfer amount must be positive", "error");
                 return;
@@ -7116,56 +7536,98 @@
                 return;
             }
 
-            window.setBtnLoading('btn-do-transfer', true);
+            const sIdx = state.data.accounts.findIndex(x => x.id === sId);
+            const tIdx = state.data.accounts.findIndex(x => x.id === tId);
+            const sAcc = state.data.accounts[sIdx];
+            const tAcc = state.data.accounts[tIdx];
 
-            const rate = state.data.settings.rate;
-            const sIdx = state.data.accounts.findIndex(x => x.id === sId), tIdx = state.data.accounts.findIndex(x => x.id === tId);
-            const sAcc = state.data.accounts[sIdx], tAcc = state.data.accounts[tIdx];
+            if (!sAcc || !tAcc) return;
 
-            if (sAcc.balance < val) {
+            const isCrossCurrency = sAcc.currency !== tAcc.currency;
+            let customRate = state.data.settings?.rate || 22.75;
+            let finalAmt = val;
+            let fee = 0;
+
+            if (isCrossCurrency) {
+                customRate = parseFloat(document.getElementById('tx-rate')?.value) || customRate;
+                const recVal = parseFloat(document.getElementById('tx-received')?.value);
+                finalAmt = (!isNaN(recVal) && recVal > 0) ? recVal : (val * customRate);
+                fee = parseFloat(document.getElementById('tx-fee')?.value) || 0;
+            }
+
+            const totalDebit = val + fee;
+
+            if (sAcc.balance < totalDebit) {
                 const errDiv = document.getElementById('transfer-error-msg');
+                const errMsg = `Insufficient Funds! (${sAcc.currency} ${sAcc.balance.toLocaleString()} available < ${totalDebit.toLocaleString()} required)`;
                 if (errDiv) {
-                    errDiv.innerText = "Insufficient Funds in Source Account";
+                    errDiv.innerText = errMsg;
                     errDiv.classList.remove('hidden');
                 } else {
-                    window.showToast("Insufficient Funds in Source Account", "error");
+                    window.showToast(errMsg, "error");
                 }
-                window.setBtnLoading('btn-do-transfer', false);
                 return;
             } else {
                 const errDiv = document.getElementById('transfer-error-msg');
                 if (errDiv) errDiv.classList.add('hidden');
             }
 
-            let finalAmt = val;
-            let noteSuffix = "";
+            window.setBtnLoading('btn-do-transfer', true);
 
-            if (sAcc.currency !== tAcc.currency) {
-                if (sAcc.currency === 'AED' && tAcc.currency === 'INR') finalAmt = val * rate;
-                else if (sAcc.currency === 'INR' && tAcc.currency === 'AED') finalAmt = val / rate;
+            const dateIso = new Date().toISOString();
+            const noteSuffix = isCrossCurrency ? ` (Rate: ${customRate.toFixed(2)}${fee > 0 ? `, Fee: ${sAcc.currency} ${fee}` : ''})` : '';
+
+            // 1. Transfer Out on Source Account
+            state.data.transactions.push({
+                id: window.genId(),
+                accountId: sId,
+                amount: window.toCurrency(val),
+                type: 'transfer_out',
+                category: tCat,
+                note: `To ${tAcc.name}: ${n}${noteSuffix}`,
+                date: dateIso,
+                exchangeRate: customRate,
+                transferTo: tId
+            });
+
+            // 2. Transfer In on Destination Account (Exact credited amount)
+            state.data.transactions.push({
+                id: window.genId(),
+                accountId: tId,
+                amount: window.toCurrency(finalAmt),
+                type: 'transfer_in',
+                category: tCat,
+                note: `From ${sAcc.name}: ${n}${noteSuffix}`,
+                date: dateIso,
+                exchangeRate: customRate,
+                transferFrom: sId
+            });
+
+            // 3. If there was a transfer fee, log it as an expense on the source account
+            if (fee > 0) {
+                state.data.transactions.push({
+                    id: window.genId(),
+                    accountId: sId,
+                    amount: window.toCurrency(fee),
+                    type: 'expense',
+                    category: 'Bank Charges',
+                    note: `Transfer Fee for ${n} to ${tAcc.name}`,
+                    date: dateIso,
+                    exchangeRate: customRate
+                });
             }
 
-            // --- INVESTMENT LOGIC REMOVED (Cost-Basis Only) ---
-
-            // LEDGER-BASED REFACTOR: Do not manually update balances
-
-            // 3. Transactions
-            const dateIso = new Date().toISOString();
-            const rateSnapshot = state.data.settings.rate;
-
-            state.data.transactions.push({
-                id: window.genId(), accountId: sId, amount: window.toCurrency(val), type: 'transfer_out', category: tCat, note: `To ${tAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
-            });
-            state.data.transactions.push({
-                id: window.genId(), accountId: tId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: tCat, note: `From ${sAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
-            });
-
             window.recalculateBalances();
-            await updateDb();
+            try {
+                await window.updateDb();
+            } catch (err) {
+                console.error("Error updating DB after transfer:", err);
+            }
+
             window.setBtnLoading('btn-do-transfer', false);
-            closeModal();
+            window.closeModal();
             window.renderApp();
-            window.showToast("Transfer Successful", "success");
+            window.showToast(`Transferred ${sAcc.currency} ${val.toLocaleString()} → ${tAcc.currency} ${finalAmt.toLocaleString()} successfully!`, "success");
         };
 
         window.openSettleFlow = function (id) {
@@ -7425,9 +7887,9 @@
             const curINR = a.currency === 'AED' ? curNative * r : curNative;
 
             // 2. Invested Amount (Net Inflow)
-            // Transfer In = Deposit, Transfer Out = Withdrawal
-            const deps = ts.filter(t => t.type === 'transfer_in').reduce((s, t) => s + parseFloat(t.amount), 0);
-            const withs = ts.filter(t => t.type === 'transfer_out').reduce((s, t) => s + parseFloat(t.amount), 0);
+            // Transfer In / Income = Deposit, Transfer Out / Expense = Withdrawal
+            const deps = ts.filter(t => t.type === 'transfer_in' || t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+            const withs = ts.filter(t => t.type === 'transfer_out' || t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
 
             // For commodities OR Mutual Funds OR any investment, use originalCost if available + net transfers
             let investedNative;
@@ -7436,10 +7898,13 @@
             const netTransfers = deps - withs;
 
             // If historical cost is set, add it. This is the "Base".
-            if (a.originalCost !== undefined) {
+            if (a.originalCost !== undefined && a.originalCost > 0) {
                 investedNative = a.originalCost + netTransfers;
             } else {
                 investedNative = Math.max(0, netTransfers);
+            }
+            if (investedNative === 0 && curNative > 0) {
+                investedNative = curNative;
             }
 
             const investedINR = a.currency === 'AED' ? investedNative * r : investedNative;
@@ -9554,70 +10019,174 @@ window.showCategoryDetails = function(cat) {
 // 3. Override Salary Modal UI to be simple
 window.renderGuiltFreeModal = function() {
     const c = document.getElementById('modal-content');
-    const r = state.data.settings.rate;
+    const r = state.data.settings?.rate || 22.75;
     
-    // 1. Get Liquid Assets
+    // 1. Get Liquid Assets (Cash & Bank)
     const liquidAccounts = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type));
     const liquidTotalAED = liquidAccounts.reduce((s, a) => s + (a.currency === 'AED' ? a.balance : a.balance / r), 0);
     
-    // 2. Get Budgets
-    const budgets = state.data.budgets || {};
-    const totalBudgetsAED = Object.values(budgets).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+    // 2. Get Comprehensive Envelope & Budget Allocations
+    const stats = (typeof window.getEnvelopeStats === 'function') ? window.getEnvelopeStats() : { totalFunded: 0, totalDefunded: 0, categories: {} };
     
+    const plannedEnvelopes = [];
+    let totalBudgetsAED = 0;
+    
+    const allCats = (typeof window.getAllBudgetCategories === 'function') ? window.getAllBudgetCategories() : (state.data.expenseCategories || []);
+    
+    if (stats && stats.categories) {
+        allCats.forEach(cat => {
+            const cStat = stats.categories[cat];
+            if (cStat && (cStat.funded > 0 || cStat.spent > 0)) {
+                const pillar = (typeof window.getCategoryPillar === 'function') ? window.getCategoryPillar(cat) : 'expense';
+                plannedEnvelopes.push({
+                    name: cat,
+                    pillar: pillar,
+                    allocated: cStat.funded,
+                    spent: cStat.spent,
+                    available: cStat.available
+                });
+                totalBudgetsAED += cStat.funded;
+            }
+        });
+    }
+
+    // If envelope ledger had no funded entries, check budget template or budgets
+    if (plannedEnvelopes.length === 0) {
+        const sourceBudgets = (state.data.budgetTemplate && Object.keys(state.data.budgetTemplate).length > 0)
+            ? state.data.budgetTemplate
+            : (state.data.budgets || {});
+
+        Object.keys(sourceBudgets).forEach(cat => {
+            const val = parseFloat(sourceBudgets[cat]) || 0;
+            if (val > 0) {
+                const pillar = (typeof window.getCategoryPillar === 'function') ? window.getCategoryPillar(cat) : 'expense';
+                plannedEnvelopes.push({
+                    name: cat,
+                    pillar: pillar,
+                    allocated: val,
+                    spent: 0,
+                    available: val
+                });
+                totalBudgetsAED += val;
+            }
+        });
+    }
+
     const guiltFree = liquidTotalAED - totalBudgetsAED;
     const isNegative = guiltFree < 0;
 
-    let html = `<div class="max-w-2xl mx-auto space-y-6 fade-in text-left pb-16">
-        
-        <div class="bg-gradient-to-br from-rose-500/20 via-slate-800 to-slate-900 border-2 border-rose-500/30 rounded-[2.5rem] p-8 text-center mb-8 shadow-2xl backdrop-blur-md">
-            <h2 class="text-xs font-black text-rose-400 uppercase tracking-widest mb-2">Available Guilt-Free Amount</h2>
-            <p class="text-5xl font-black ${isNegative ? 'text-slate-400' : 'text-white'} tracking-tight num-font mb-4">
-                ${isNegative ? '0.00 AED' : window.fmtMoney(guiltFree, 'AED')}
-            </p>
-            <p class="text-sm font-bold text-slate-300 max-w-md mx-auto">This is money you have in your liquid accounts (Cash/Bank) that is <span class="text-rose-400">not assigned</span> to any monthly budget. Spend it however you like!</p>
-            ${isNegative ? `<p class="mt-4 text-xs font-black text-rose-400 bg-rose-500/10 border border-rose-500/30 inline-block px-4 py-2 rounded-xl">⚠️ You are underfunded by ${window.fmtMoney(Math.abs(guiltFree), 'AED')}. Your liquid cash cannot cover your planned budgets.</p>` : ''}
-        </div>
+    // Helper for pillar badges
+    const getPillarBadge = (p) => {
+        if (p === 'savings') return `<span class="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1"><i data-lucide="shield" class="w-3 h-3"></i> Savings</span>`;
+        if (p === 'investment') return `<span class="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 flex items-center gap-1"><i data-lucide="trending-up" class="w-3 h-3"></i> Invest</span>`;
+        return `<span class="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20 flex items-center gap-1"><i data-lucide="shopping-bag" class="w-3 h-3"></i> Living</span>`;
+    };
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Liquid Assets Breakdown -->
-            <div class="bg-slate-800/90 rounded-[2rem] p-6 border border-slate-700/80 shadow-lg">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><i data-lucide="wallet" class="w-4 h-4 text-rose-400"></i> Liquid Accounts</h3>
-                <div class="space-y-3">
-                    ${liquidAccounts.map(a => `
-                        <div class="flex justify-between items-center border-b border-slate-700/50 pb-2">
-                            <div>
-                                <p class="text-xs font-black text-white">${a.name}</p>
-                                <p class="text-[9px] font-bold text-slate-400">${a.type}</p>
-                            </div>
-                            <p class="text-xs font-black text-slate-200 num-font">${window.fmtMoney(a.balance, a.currency)}</p>
+    let html = `
+        <div class="max-w-4xl mx-auto space-y-6 fade-in text-left pb-16">
+            
+            <!-- Hero Card: Available Guilt-Free Amount -->
+            <div class="bg-gradient-to-br from-rose-500/20 via-slate-800 to-slate-900 border-2 border-rose-500/30 rounded-[2.5rem] p-8 text-center shadow-2xl backdrop-blur-md relative overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 opacity-10 pointer-events-none">
+                    <i data-lucide="sparkles" class="w-48 h-48 text-rose-400"></i>
+                </div>
+                
+                <h2 class="text-xs font-black text-rose-400 uppercase tracking-widest mb-2">Available Guilt-Free Amount</h2>
+                <p class="text-5xl md:text-6xl font-black ${isNegative ? 'text-rose-400' : 'text-white'} tracking-tight num-font mb-4">
+                    ${isNegative ? '0.00 AED' : window.fmtMoney(guiltFree, 'AED')}
+                </p>
+                <p class="text-sm font-bold text-slate-300 max-w-md mx-auto">
+                    This is money in your liquid accounts (Cash/Bank) that is <span class="text-rose-400 font-extrabold">not assigned</span> to any monthly envelope. Spend it however you like!
+                </p>
+                ${isNegative ? `
+                    <div class="mt-4 p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl max-w-md mx-auto text-left flex items-center gap-3">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-400 shrink-0"></i>
+                        <p class="text-xs font-bold text-rose-300">
+                            <b>Underfunded by ${window.fmtMoney(Math.abs(guiltFree), 'AED')}:</b> Your current liquid cash cannot cover all planned envelopes.
+                        </p>
+                    </div>
+                ` : ''}
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 1. Liquid Accounts Breakdown -->
+                <div class="bg-slate-800/90 rounded-[2rem] p-6 border border-slate-700/80 shadow-lg flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <i data-lucide="wallet" class="w-4 h-4 text-rose-400"></i> Liquid Accounts (${liquidAccounts.length})
+                            </h3>
+                            <span class="text-[9px] font-bold text-slate-500">Cash & Bank</span>
                         </div>
-                    `).join('')}
-                    <div class="flex justify-between items-center pt-2">
-                        <p class="text-xs font-black text-slate-300 uppercase">Total Liquid</p>
-                        <p class="text-sm font-black text-white num-font">${window.fmtMoney(liquidTotalAED, 'AED')}</p>
+                        <div class="space-y-3">
+                            ${liquidAccounts.map(a => `
+                                <div class="flex justify-between items-center border-b border-slate-700/50 pb-2.5">
+                                    <div>
+                                        <p class="text-xs font-black text-white">${a.name}</p>
+                                        <p class="text-[9px] font-bold text-slate-400">${a.type} • ${a.currency}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-xs font-black text-slate-200 num-font">${window.fmtMoney(a.balance, a.currency)}</p>
+                                        ${a.currency !== 'AED' ? `<p class="text-[9px] font-bold text-slate-400">≈ ${window.fmtMoney(a.balance / r, 'AED')}</p>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center pt-4 border-t border-slate-700 mt-4">
+                        <p class="text-xs font-black text-slate-300 uppercase">Total Liquid Cash</p>
+                        <p class="text-base font-black text-emerald-400 num-font">${window.fmtMoney(liquidTotalAED, 'AED')}</p>
+                    </div>
+                </div>
+
+                <!-- 2. Planned Envelopes Breakdown -->
+                <div class="bg-slate-800/90 rounded-[2rem] p-6 border border-slate-700/80 shadow-lg flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <i data-lucide="layers" class="w-4 h-4 text-rose-400"></i> Planned Envelopes (${plannedEnvelopes.length})
+                            </h3>
+                            <button onclick="window.openModal('budget')" class="text-[9px] font-bold text-rose-400 hover:text-rose-300 uppercase tracking-wider flex items-center gap-1">
+                                <i data-lucide="edit-3" class="w-3 h-3"></i> Edit Budget
+                            </button>
+                        </div>
+                        <div class="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                            ${plannedEnvelopes.length > 0 ? plannedEnvelopes.map(e => `
+                                <div class="flex justify-between items-center border-b border-slate-700/50 pb-2.5">
+                                    <div class="space-y-0.5">
+                                        <p class="text-xs font-black text-white">${e.name}</p>
+                                        <div>${getPillarBadge(e.pillar)}</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-xs font-black text-slate-200 num-font">AED ${e.allocated.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                                        ${e.spent > 0 ? `<p class="text-[9px] font-bold text-rose-400">Spent: AED ${e.spent.toLocaleString()}</p>` : ''}
+                                    </div>
+                                </div>
+                            `).join('') : `
+                                <div class="text-center py-8">
+                                    <p class="text-xs font-bold text-slate-400 mb-2">No envelopes planned yet.</p>
+                                    <button onclick="window.openModal('budget')" class="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-black uppercase tracking-wider transition-all">
+                                        Set Up Envelopes
+                                    </button>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center pt-4 border-t border-slate-700 mt-4">
+                        <p class="text-xs font-black text-slate-300 uppercase">Total Envelopes</p>
+                        <p class="text-base font-black text-rose-400 num-font">${window.fmtMoney(totalBudgetsAED, 'AED')}</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Planned Envelopes Breakdown -->
-            <div class="bg-slate-800/90 rounded-[2rem] p-6 border border-slate-700/80 shadow-lg">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4 text-rose-400"></i> Planned Envelopes</h3>
-                <div class="space-y-3">
-                    ${Object.keys(budgets).map(cat => `
-                        <div class="flex justify-between items-center border-b border-slate-700/50 pb-2">
-                            <p class="text-xs font-black text-white">${cat}</p>
-                            <p class="text-xs font-black text-slate-200 num-font">${window.fmtMoney(budgets[cat], 'AED')}</p>
-                        </div>
-                    `).join('')}
-                    <div class="flex justify-between items-center pt-2">
-                        <p class="text-xs font-black text-slate-300 uppercase">Total Allocated</p>
-                        <p class="text-sm font-black text-rose-400 num-font">${window.fmtMoney(totalBudgetsAED, 'AED')}</p>
-                    </div>
-                </div>
+            <!-- Quick Action Footer -->
+            <div class="pt-2">
+                <button onclick="window.openModal('budget')" class="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-2xl font-black uppercase text-xs tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg">
+                    <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i> Open Monthly Budgeting Hub
+                </button>
             </div>
         </div>
-
-    </div>`;
+    `;
 
     c.innerHTML = html;
     lucide.createIcons();
@@ -9804,6 +10373,13 @@ window.renderAppOverrides = function() {
             document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
             document.getElementById('modal-title').innerText = 'No-Spend Streak Breakdown';
             window.renderStreakDetailsModal();
+            return;
+        }
+
+        if (type === 'credit_score') {
+            document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
+            document.getElementById('modal-title').innerText = 'Credit Score & Financial Health';
+            window.renderCreditScoreModal();
             return;
         }
 
@@ -12050,6 +12626,567 @@ window.restoreVaultFromFile = function(file) {
         }
     };
     reader.readAsText(file);
+};
+
+
+// =========================================================================
+// FEATURE 3: PERSONAL CREDIT SCORE ENGINE (300-900) & PEER CONTACT TRUST
+// =========================================================================
+
+window.getContactTrustScore = function(contactName) {
+    if (!contactName) return { score: 100, tier: 'New Contact', color: 'indigo', label: '100 • Clean Slate', stats: {} };
+    
+    const debts = (state.data?.debts || []).filter(d => d.party?.toLowerCase() === contactName.toLowerCase() && d.type === 'receivable');
+    if (debts.length === 0) {
+        return { 
+            score: 100, 
+            tier: 'Clean Slate', 
+            color: 'indigo', 
+            icon: 'sparkles',
+            label: '100/100 • Clean Slate', 
+            stats: { totalLent: 0, totalRepaid: 0, overdueCount: 0, reschedules: 0, settledLateCount: 0, onTimeCount: 0 } 
+        };
+    }
+
+    let score = 100;
+    const now = new Date();
+
+    let overdueDaysMax = 0;
+    let overdueCount = 0;
+    let reschedules = 0;
+    let settledLateCount = 0;
+    let onTimeCount = 0;
+    let totalLent = 0;
+    let totalRepaid = 0;
+
+    debts.forEach(d => {
+        const orig = Number(d.originalAmount) || Number(d.amount) || 0;
+        const cur = Number(d.amount) || 0;
+        totalLent += orig;
+        totalRepaid += Math.max(0, orig - cur);
+
+        reschedules += (d.rescheduledCount || 0);
+
+        if (d.settled) {
+            if (d.repaymentDate && d.settledDate && d.repaymentDate !== 'N/A') {
+                const due = new Date(d.repaymentDate);
+                const settled = new Date(d.settledDate);
+                if (!isNaN(due.getTime()) && !isNaN(settled.getTime())) {
+                    const diffDays = Math.ceil((settled - due) / (1000 * 60 * 60 * 24));
+                    if (diffDays > 1) settledLateCount++;
+                    else onTimeCount++;
+                } else {
+                    onTimeCount++;
+                }
+            } else {
+                onTimeCount++;
+            }
+        }
+
+        if (!d.settled && d.repaymentDate && d.repaymentDate !== 'N/A' && d.repaymentDate !== 'null') {
+            const due = new Date(d.repaymentDate);
+            if (!isNaN(due.getTime()) && due < now) {
+                overdueCount++;
+                const diffDays = Math.ceil((now - due) / (1000 * 60 * 60 * 24));
+                if (diffDays > overdueDaysMax) overdueDaysMax = diffDays;
+            }
+        }
+    });
+
+    // 1. Deductions for Active Overdue Debts
+    if (overdueDaysMax > 30) score -= 45;
+    else if (overdueDaysMax > 14) score -= 30;
+    else if (overdueDaysMax > 0) score -= 15;
+
+    // 2. Deductions for Past Late Settlements
+    score -= Math.min(25, settledLateCount * 10);
+
+    // 3. Deductions for Postponements / Reschedules
+    score -= Math.min(20, reschedules * 5);
+
+    // 4. Bonus for Repayment Consistency
+    if (totalRepaid > 0 && totalLent > 0 && (totalRepaid / totalLent) >= 0.5 && overdueCount === 0) {
+        score = Math.min(100, score + 10);
+    }
+
+    score = Math.max(10, Math.min(100, Math.round(score)));
+
+    let tier = 'Highly Reliable';
+    let color = 'emerald';
+    let icon = 'shield-check';
+
+    if (score >= 90) {
+        tier = 'Highly Reliable';
+        color = 'emerald';
+        icon = 'shield-check';
+    } else if (score >= 75) {
+        tier = 'Good Standing';
+        color = 'teal';
+        icon = 'check-circle';
+    } else if (score >= 50) {
+        tier = 'Moderate Risk';
+        color = 'amber';
+        icon = 'alert-circle';
+    } else {
+        tier = 'High Default Risk';
+        color = 'rose';
+        icon = 'alert-triangle';
+    }
+
+    return {
+        score,
+        tier,
+        color,
+        icon,
+        label: `${score}/100 • ${tier}`,
+        stats: { totalLent, totalRepaid, overdueCount, overdueDaysMax, reschedules, settledLateCount, onTimeCount }
+    };
+};
+
+window.calcTrustScore = function(contactName) {
+    const t = window.getContactTrustScore(contactName);
+    return `${t.score}/100 (${t.tier})`;
+};
+
+window.getPersonalCreditScore = function() {
+    const r = state.data?.settings?.rate || 22.75;
+    const now = new Date();
+    
+    // --- 1. PAYMENT & BNPL HISTORY (35% = Max 210 pts) ---
+    const allDebts = state.data?.debts || [];
+    const payables = allDebts.filter(d => d.type === 'payable' || d.subtype === 'bnpl' || d.isBnpl);
+    
+    let overduePayablesCount = 0;
+    let maxOverdueDays = 0;
+    
+    payables.forEach(d => {
+        if (!d.settled) {
+            if (d.repaymentDate && d.repaymentDate !== 'N/A') {
+                const due = new Date(d.repaymentDate);
+                if (!isNaN(due.getTime()) && due < now) {
+                    overduePayablesCount++;
+                    const diffDays = Math.ceil((now - due) / (1000 * 60 * 60 * 24));
+                    if (diffDays > maxOverdueDays) maxOverdueDays = diffDays;
+                }
+            }
+            if (d.schedule && Array.isArray(d.schedule)) {
+                d.schedule.forEach(s => {
+                    if (!s.paid) {
+                        const sDate = s.date || s.dueDate;
+                        if (sDate && new Date(sDate) < now) {
+                            overduePayablesCount++;
+                            const diffDays = Math.ceil((now - new Date(sDate)) / (1000 * 60 * 60 * 24));
+                            if (diffDays > maxOverdueDays) maxOverdueDays = diffDays;
+                        }
+                    }
+                });
+            }
+        }
+    });
+
+    let p1Score = 210;
+    if (overduePayablesCount > 0) {
+        if (maxOverdueDays > 30) p1Score = 40;
+        else if (maxOverdueDays > 14) p1Score = 90;
+        else p1Score = 140;
+    }
+
+    // --- 2. DEBT BURDEN & UTILIZATION RATIO (30% = Max 180 pts) ---
+    let totalLiabilitiesAED = 0;
+    let totalAssetsAED = 0;
+
+    (state.data?.accounts || []).forEach(a => {
+        const b = Number(a.balance) || 0;
+        totalAssetsAED += (a.currency === 'AED' ? b : b / r);
+    });
+
+    payables.forEach(d => {
+        if (!d.settled) {
+            const amt = Number(d.amount || d.currentAmount || 0);
+            totalLiabilitiesAED += (d.currency === 'AED' ? amt : amt / r);
+        }
+    });
+
+    const netWorthAED = Math.max(0, totalAssetsAED - totalLiabilitiesAED);
+    const debtRatio = (totalAssetsAED > 0) ? (totalLiabilitiesAED / totalAssetsAED) : (totalLiabilitiesAED > 0 ? 1 : 0);
+
+    let p2Score = 180;
+    if (debtRatio > 0.75) p2Score = 20;
+    else if (debtRatio > 0.50) p2Score = 70;
+    else if (debtRatio > 0.30) p2Score = 120;
+    else if (debtRatio > 0.15) p2Score = 160;
+    else p2Score = 180;
+
+    // --- 3. EMERGENCY FUND & LIQUIDITY RUNWAY (15% = Max 90 pts) ---
+    const liquidAccs = (state.data?.accounts || []).filter(a => ['Bank Account', 'Cash', 'Savings', 'Emergency Fund'].includes(a.type));
+    const liquidCashAED = liquidAccs.reduce((s, a) => s + (a.currency === 'AED' ? (a.balance || 0) : (a.balance || 0) / r), 0);
+
+    let monthlyExpenseBase = 3500;
+    if (state.data?.envelopeLedger && state.data.envelopeLedger.length > 0) {
+        const stats = (typeof window.getEnvelopeStats === 'function') ? window.getEnvelopeStats() : null;
+        if (stats && stats.pillars && stats.pillars.expense && stats.pillars.expense.funded > 0) {
+            monthlyExpenseBase = stats.pillars.expense.funded;
+        }
+    } else if (state.data?.budgetTemplate && Object.keys(state.data.budgetTemplate).length > 0) {
+        monthlyExpenseBase = Object.values(state.data.budgetTemplate).reduce((s, v) => s + (parseFloat(v)||0), 0) || 3500;
+    }
+
+    const runwayMonths = monthlyExpenseBase > 0 ? (liquidCashAED / monthlyExpenseBase) : 1;
+    let p3Score = 90;
+    if (runwayMonths >= 6) p3Score = 90;
+    else if (runwayMonths >= 3) p3Score = 75;
+    else if (runwayMonths >= 1.5) p3Score = 55;
+    else if (runwayMonths >= 0.5) p3Score = 30;
+    else p3Score = 10;
+
+    // --- 4. WEALTH ACCUMULATION & SAVINGS RATE (10% = Max 60 pts) ---
+    let wealthRate = 0.25;
+    if (typeof window.getEnvelopeStats === 'function') {
+        const eStats = window.getEnvelopeStats();
+        const sav = (eStats.pillars?.savings?.funded || 0) + (eStats.pillars?.investment?.funded || 0);
+        const tot = eStats.totalFunded || state.data?.settings?.expectedSalary || (sav + (eStats.pillars?.expense?.funded || 0));
+        if (tot > 0) wealthRate = sav / tot;
+    }
+
+    let p4Score = 60;
+    if (wealthRate >= 0.40) p4Score = 60;
+    else if (wealthRate >= 0.25) p4Score = 50;
+    else if (wealthRate >= 0.10) p4Score = 35;
+    else p4Score = 15;
+
+    // --- 5. BUDGET ENVELOPE DISCIPLINE (10% = Max 60 pts) ---
+    let overspentCount = 0;
+    if (typeof window.getEnvelopeStats === 'function') {
+        const eStats = window.getEnvelopeStats();
+        Object.values(eStats.categories || {}).forEach(c => {
+            if (c.available < -0.5) overspentCount++;
+        });
+    }
+
+    let p5Score = 60;
+    if (overspentCount === 0) p5Score = 60;
+    else if (overspentCount === 1) p5Score = 40;
+    else if (overspentCount === 2) p5Score = 25;
+    else p5Score = 10;
+
+    // Total Score (300 to 900)
+    const rawScore = 300 + p1Score + p2Score + p3Score + p4Score + p5Score;
+    const finalScore = Math.max(300, Math.min(900, Math.round(rawScore)));
+
+    let tier = 'Excellent';
+    let color = 'emerald';
+    let grade = 'A+';
+    let statusSummary = 'Prime Tier • Top 5% Financial Health';
+    
+    if (finalScore >= 800) {
+        tier = 'Excellent';
+        color = 'emerald';
+        grade = 'A+';
+        statusSummary = 'Prime Tier • Elite Financial Health';
+    } else if (finalScore >= 740) {
+        tier = 'Very Good';
+        color = 'teal';
+        grade = 'A';
+        statusSummary = 'Low Risk • Robust Wealth Profile';
+    } else if (finalScore >= 670) {
+        tier = 'Good';
+        color = 'indigo';
+        grade = 'B+';
+        statusSummary = 'Moderate Risk • Stable Standing';
+    } else if (finalScore >= 580) {
+        tier = 'Fair';
+        color = 'amber';
+        grade = 'C';
+        statusSummary = 'High Debt Leverage • Needs Improvement';
+    } else {
+        tier = 'Needs Attention';
+        color = 'rose';
+        grade = 'D';
+        statusSummary = 'Overdue Liabilities or High Debt Burden';
+    }
+
+    const recommendations = [];
+    if (overduePayablesCount > 0) {
+        recommendations.push({
+            title: `Settle ${overduePayablesCount} Overdue Liability`,
+            impact: '+60 to +120 Pts',
+            desc: 'Clearing overdue payables immediately restores full payment history points.',
+            actionText: 'Manage Liabilities',
+            actionFn: "window.openModal('debt')"
+        });
+    }
+    if (runwayMonths < 3) {
+        recommendations.push({
+            title: 'Boost Emergency Reserve to 3 Months',
+            impact: '+25 to +40 Pts',
+            desc: `Current liquid reserves cover ~${runwayMonths.toFixed(1)} mo. Top up Ruya Save / Emergency Fund to reach 3+ months.`,
+            actionText: 'View Emergency Fund',
+            actionFn: "window.openEmergencyFundDashboard()"
+        });
+    }
+    if (debtRatio > 0.25) {
+        recommendations.push({
+            title: 'Reduce Debt-to-Asset Leverage (< 20%)',
+            impact: '+20 to +50 Pts',
+            desc: `Liabilities make up ${(debtRatio * 100).toFixed(0)}% of assets. Pay down BNPL or loans to lower leverage.`,
+            actionText: 'Review Liabilities',
+            actionFn: "window.openModal('debt')"
+        });
+    }
+    if (overspentCount > 0) {
+        recommendations.push({
+            title: `Rebalance ${overspentCount} Overspent Envelope`,
+            impact: '+20 to +35 Pts',
+            desc: 'Use budget sweep or cover overspending to restore positive envelope balances.',
+            actionText: 'Open Budget Hub',
+            actionFn: "window.openModal('budget')"
+        });
+    }
+    if (recommendations.length === 0) {
+        recommendations.push({
+            title: 'Maintain Current Wealth Discipline',
+            impact: 'Max Tier Retained',
+            desc: 'Your financial pillars are optimal. Keep automating monthly savings and investment transfers.',
+            actionText: 'View Lifetime Roadmap',
+            actionFn: "window.openMilestoneModal()"
+        });
+    }
+
+    return {
+        score: finalScore,
+        tier,
+        color,
+        grade,
+        statusSummary,
+        pillars: {
+            paymentHistory: { score: p1Score, max: 210, label: 'Payment & BNPL History', pct: Math.round((p1Score / 210) * 100), overdues: overduePayablesCount },
+            debtRatio: { score: p2Score, max: 180, label: 'Debt-to-Asset Ratio', pct: Math.round((p2Score / 180) * 100), ratio: (debtRatio * 100).toFixed(1) },
+            runway: { score: p3Score, max: 90, label: 'Emergency Runway', pct: Math.round((p3Score / 90) * 100), months: runwayMonths.toFixed(1) },
+            wealthRate: { score: p4Score, max: 60, label: 'Wealth Accumulation Rate', pct: Math.round((p4Score / 60) * 100), rate: (wealthRate * 100).toFixed(0) },
+            discipline: { score: p5Score, max: 60, label: 'Budget Envelope Discipline', pct: Math.round((p5Score / 60) * 100), overspent: overspentCount }
+        },
+        recommendations,
+        totalAssetsAED,
+        totalLiabilitiesAED,
+        netWorthAED
+    };
+};
+
+window.renderCreditScoreModal = function() {
+    const cs = window.getPersonalCreditScore();
+    const c = document.getElementById('modal-content');
+    if (!c) return;
+
+    // Meter circumference math for SVG arc
+    const scorePct = Math.min(100, Math.max(0, ((cs.score - 300) / 600) * 100));
+    const strokeDashoffset = 283 - (283 * scorePct) / 100;
+
+    let themeGradient = 'from-emerald-500/20 via-slate-800 to-slate-900 border-emerald-500/30';
+    let scoreTextColor = 'text-emerald-400';
+    if (cs.color === 'teal') {
+        themeGradient = 'from-teal-500/20 via-slate-800 to-slate-900 border-teal-500/30';
+        scoreTextColor = 'text-teal-400';
+    } else if (cs.color === 'indigo') {
+        themeGradient = 'from-indigo-500/20 via-slate-800 to-slate-900 border-indigo-500/30';
+        scoreTextColor = 'text-indigo-400';
+    } else if (cs.color === 'amber') {
+        themeGradient = 'from-amber-500/20 via-slate-800 to-slate-900 border-amber-500/30';
+        scoreTextColor = 'text-amber-400';
+    } else if (cs.color === 'rose') {
+        themeGradient = 'from-rose-500/20 via-slate-800 to-slate-900 border-rose-500/30';
+        scoreTextColor = 'text-rose-400';
+    }
+
+    let html = `
+        <div class="max-w-4xl mx-auto space-y-6 text-left fade-in pb-16">
+            
+            <!-- HERO RADIAL GAUGE CARD -->
+            <div class="bg-gradient-to-br ${themeGradient} border-2 rounded-[2.5rem] p-8 text-center shadow-2xl backdrop-blur-md relative overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 opacity-10 pointer-events-none">
+                    <i data-lucide="shield-check" class="w-48 h-48 text-indigo-400"></i>
+                </div>
+
+                <div class="inline-flex items-center gap-2 bg-slate-900/80 px-4 py-1.5 rounded-full border border-slate-700/80 mb-4">
+                    <i data-lucide="award" class="w-4 h-4 ${scoreTextColor}"></i>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-300">Financial Health Index • Grade ${cs.grade}</span>
+                </div>
+
+                <div class="relative w-48 h-48 mx-auto my-2 flex items-center justify-center">
+                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="transparent" stroke="#1e293b" stroke-width="8" stroke-dasharray="283" stroke-dashoffset="0"></circle>
+                        <circle cx="50" cy="50" r="45" fill="transparent" stroke="currentColor" stroke-width="8" stroke-dasharray="283" stroke-dashoffset="${strokeDashoffset}" stroke-linecap="round" class="${scoreTextColor} transition-all duration-1000"></circle>
+                    </svg>
+                    <div class="absolute flex flex-col items-center justify-center text-center">
+                        <span class="text-5xl font-black text-white num-font leading-none">${cs.score}</span>
+                        <span class="text-[10px] font-black uppercase tracking-widest ${scoreTextColor} mt-1">${cs.tier}</span>
+                        <span class="text-[9px] font-bold text-slate-400">300 - 900</span>
+                    </div>
+                </div>
+
+                <p class="text-sm font-bold text-slate-300 max-w-md mx-auto mt-2">
+                    ${cs.statusSummary}
+                </p>
+
+                <!-- Score Spectrum Indicator -->
+                <div class="max-w-md mx-auto mt-6 pt-4 border-t border-slate-700/60">
+                    <div class="flex justify-between text-[8px] font-black uppercase text-slate-400 mb-1.5">
+                        <span>300 Poor</span>
+                        <span>580 Fair</span>
+                        <span>670 Good</span>
+                        <span>740 Prime</span>
+                        <span>900 Elite</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-700/60 flex">
+                        <div class="bg-rose-500 h-full w-[20%]"></div>
+                        <div class="bg-amber-500 h-full w-[20%]"></div>
+                        <div class="bg-indigo-500 h-full w-[20%]"></div>
+                        <div class="bg-teal-500 h-full w-[20%]"></div>
+                        <div class="bg-emerald-500 h-full w-[20%]"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5-PILLAR DIAGNOSTIC BREAKDOWN -->
+            <div class="bg-slate-800/90 rounded-[2rem] p-6 border border-slate-700/80 shadow-lg space-y-4">
+                <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                    <h3 class="text-xs font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                        <i data-lucide="activity" class="w-4 h-4 text-indigo-400"></i> 5-Pillar Health Diagnostic
+                    </h3>
+                    <span class="text-[9px] font-bold text-slate-400">Calculated in Real-Time</span>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- Pillar 1: Payment History -->
+                    <div class="p-3.5 bg-slate-900/60 rounded-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+                            <span class="text-slate-200 flex items-center gap-2">
+                                <i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-400"></i> ${cs.pillars.paymentHistory.label} (35%)
+                            </span>
+                            <span class="text-white num-font font-black">${cs.pillars.paymentHistory.score} / ${cs.pillars.paymentHistory.max} pts</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-1">
+                            <div class="bg-emerald-500 h-full rounded-full" style="width: ${cs.pillars.paymentHistory.pct}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[9px] font-bold text-slate-400">
+                            <span>${cs.pillars.paymentHistory.overdues === 0 ? '🟢 Zero Overdue Debts/BNPL' : `🔴 ${cs.pillars.paymentHistory.overdues} Overdue Items`}</span>
+                            <span>${cs.pillars.paymentHistory.pct}% Perfect</span>
+                        </div>
+                    </div>
+
+                    <!-- Pillar 2: Debt-to-Asset Ratio -->
+                    <div class="p-3.5 bg-slate-900/60 rounded-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+                            <span class="text-slate-200 flex items-center gap-2">
+                                <i data-lucide="scale" class="w-3.5 h-3.5 text-indigo-400"></i> ${cs.pillars.debtRatio.label} (30%)
+                            </span>
+                            <span class="text-white num-font font-black">${cs.pillars.debtRatio.score} / ${cs.pillars.debtRatio.max} pts</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-1">
+                            <div class="bg-indigo-500 h-full rounded-full" style="width: ${cs.pillars.debtRatio.pct}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[9px] font-bold text-slate-400">
+                            <span>Debt Burden: ${cs.pillars.debtRatio.ratio}% of Total Assets</span>
+                            <span>${cs.pillars.debtRatio.pct}% Optimal</span>
+                        </div>
+                    </div>
+
+                    <!-- Pillar 3: Emergency Runway -->
+                    <div class="p-3.5 bg-slate-900/60 rounded-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+                            <span class="text-slate-200 flex items-center gap-2">
+                                <i data-lucide="shield" class="w-3.5 h-3.5 text-teal-400"></i> ${cs.pillars.runway.label} (15%)
+                            </span>
+                            <span class="text-white num-font font-black">${cs.pillars.runway.score} / ${cs.pillars.runway.max} pts</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-1">
+                            <div class="bg-teal-500 h-full rounded-full" style="width: ${cs.pillars.runway.pct}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[9px] font-bold text-slate-400">
+                            <span>Liquidity Reserve: ~${cs.pillars.runway.months} Months Runway</span>
+                            <span>${cs.pillars.runway.pct}% Optimal</span>
+                        </div>
+                    </div>
+
+                    <!-- Pillar 4: Wealth Accumulation Rate -->
+                    <div class="p-3.5 bg-slate-900/60 rounded-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+                            <span class="text-slate-200 flex items-center gap-2">
+                                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-amber-400"></i> ${cs.pillars.wealthRate.label} (10%)
+                            </span>
+                            <span class="text-white num-font font-black">${cs.pillars.wealthRate.score} / ${cs.pillars.wealthRate.max} pts</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-1">
+                            <div class="bg-amber-500 h-full rounded-full" style="width: ${cs.pillars.wealthRate.pct}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[9px] font-bold text-slate-400">
+                            <span>Savings & Investment Rate: ${cs.pillars.wealthRate.rate}%</span>
+                            <span>${cs.pillars.wealthRate.pct}% Optimal</span>
+                        </div>
+                    </div>
+
+                    <!-- Pillar 5: Budget Envelope Discipline -->
+                    <div class="p-3.5 bg-slate-900/60 rounded-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1.5">
+                            <span class="text-slate-200 flex items-center gap-2">
+                                <i data-lucide="layers" class="w-3.5 h-3.5 text-rose-400"></i> ${cs.pillars.discipline.label} (10%)
+                            </span>
+                            <span class="text-white num-font font-black">${cs.pillars.discipline.score} / ${cs.pillars.discipline.max} pts</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-1">
+                            <div class="bg-rose-500 h-full rounded-full" style="width: ${cs.pillars.discipline.pct}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[9px] font-bold text-slate-400">
+                            <span>${cs.pillars.discipline.overspent === 0 ? '🟢 All Envelopes Healthy' : `⚠️ ${cs.pillars.discipline.overspent} Overspent Categories`}</span>
+                            <span>${cs.pillars.discipline.pct}% Optimal</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACTIONABLE SCORE BOOSTERS (AI DOCTOR) -->
+            <div class="bg-slate-800/90 rounded-[2rem] p-6 border border-slate-700/80 shadow-lg space-y-4">
+                <h3 class="text-xs font-black uppercase tracking-widest text-slate-300 flex items-center gap-2 border-b border-slate-700/60 pb-3">
+                    <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Actionable Score Boosters
+                </h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${cs.recommendations.map(r => `
+                        <div class="p-4 bg-slate-900/60 rounded-2xl border border-slate-700/60 flex flex-col justify-between space-y-3">
+                            <div>
+                                <div class="flex justify-between items-start mb-1">
+                                    <h4 class="text-xs font-black text-white">${r.title}</h4>
+                                    <span class="text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">${r.impact}</span>
+                                </div>
+                                <p class="text-[10px] font-bold text-slate-400">${r.desc}</p>
+                            </div>
+                            <button onclick="${r.actionFn}" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold uppercase text-[9px] tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm">
+                                ${r.actionText} <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <!-- PEER TRUST RATING BANNER -->
+            <div class="p-6 bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 rounded-[2rem] border border-indigo-500/30 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                        <i data-lucide="users" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-black text-white">Peer Contact Trust Ratings</h4>
+                        <p class="text-[10px] font-bold text-slate-400">FINZ automatically scores people you lend money to (0-100) based on their on-time repayment history.</p>
+                    </div>
+                </div>
+                <button onclick="window.openModal('debt')" class="px-5 py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-wider shrink-0 transition-all shadow-lg shadow-indigo-500/20">
+                    Open Liability Hub
+                </button>
+            </div>
+        </div>
+    `;
+
+    c.innerHTML = html;
+    if (window.lucide) window.lucide.createIcons();
 };
 
     </script>
