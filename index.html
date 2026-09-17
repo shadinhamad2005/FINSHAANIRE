@@ -7768,9 +7768,11 @@
                 amount: window.toCurrency(finalTxAmt),
                 type: d.type === 'receivable' ? 'income' : 'expense',
                 category: 'Settlement',
+                currency: acc.currency,
                 note: `${d.party} (${enteredAmt} ${d.currency}) ${fxNote.join(' ')}`,
                 debtId: id, // Link to Debt
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                exchangeRate: rate
             });
 
             // Math Safety & Auto-Settle
@@ -12391,7 +12393,7 @@ window.openPartialSettleModal = function(debtId) {
 
             <div class="space-y-4">
                 <div>
-                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">Amount ${d.type === 'receivable' ? 'Received' : 'Paid'}</label>
+                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">Amount ${d.type === 'receivable' ? 'Received' : 'Paid'} (${d.currency})</label>
                     <input type="number" id="partial-pay-amt" placeholder="0.00" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-emerald-400 font-black text-2xl outline-none num-font focus:border-emerald-500">
                 </div>
 
@@ -12439,15 +12441,29 @@ window.commitPartialPayment = async function(debtId) {
     const acc = state.data.accounts.find(a => a.id === accId);
     const rateSnapshot = state.data.settings?.rate || 22.75;
 
+    // Currency conversion if debt currency differs from target account currency
+    let finalTxAmt = amt;
+    const fxInfo = [];
+    if (acc && d.currency !== acc.currency) {
+        if (d.currency === 'AED' && acc.currency === 'INR') {
+            finalTxAmt = amt * rateSnapshot;
+            fxInfo.push(`(≈ ₹${finalTxAmt.toFixed(2)})`);
+        } else if (d.currency === 'INR' && acc.currency === 'AED') {
+            finalTxAmt = amt / rateSnapshot;
+            fxInfo.push(`(≈ AED ${finalTxAmt.toFixed(2)})`);
+        }
+    }
+
     // Log the transaction
     const isReceivable = d.type === 'receivable';
     state.data.transactions.push({
         id: window.genId(),
         accountId: accId,
-        amount: isReceivable ? amt : -amt,
+        amount: isReceivable ? window.toCurrency(finalTxAmt) : -window.toCurrency(finalTxAmt),
         type: isReceivable ? 'income' : 'expense',
         category: 'Debt Settlement',
-        note: `Partial payment ${isReceivable ? 'from' : 'to'} ${d.party}`,
+        currency: acc ? acc.currency : d.currency,
+        note: `Partial payment ${isReceivable ? 'from' : 'to'} ${d.party} (${amt} ${d.currency}) ${fxInfo.join(' ')}`,
         date: new Date(payDate).toISOString(),
         exchangeRate: rateSnapshot,
         debtId: d.id
