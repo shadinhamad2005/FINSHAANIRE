@@ -47,6 +47,24 @@
             return parseFloat(amt);
         };
 
+        // Helper: Convert any transaction amount to Base Currency (AED)
+        window.getTransactionBaseAmount = function (t) {
+            if (!t) return 0;
+            const amt = parseFloat(t.amount) || 0;
+            if (amt === 0) return 0;
+            const baseCur = (typeof state !== 'undefined' && state.data?.settings?.currency) ? state.data.settings.currency : 'AED';
+            const acc = (typeof state !== 'undefined' && state.data?.accounts) ? state.data.accounts.find(a => a.id === t.accountId) : null;
+            const cur = t.currency || (acc ? acc.currency : baseCur);
+            if (cur === baseCur) return amt;
+            const rate = parseFloat(t.exchangeRate) || parseFloat(state.data?.settings?.rate) || 22.75;
+            if (baseCur === 'AED' && cur === 'INR') {
+                return rate > 0 ? (amt / rate) : amt;
+            } else if (baseCur === 'INR' && cur === 'AED') {
+                return amt * rate;
+            }
+            return amt;
+        };
+
         // Helper: Dynamic Chart Currency
         window.chartCurrency = window.chartCurrency || 'INR'; // Native default is INR
         window.setChartCurrency = function (cur) {
@@ -60,6 +78,14 @@
             } else {
                 return nativeCur === 'INR' ? val / rate : val;
             }
+        };
+
+        // Safe Global Delete Bridges
+        window.confirmDeleteTransaction = function (id) {
+            if (typeof window.deleteTransaction === 'function') {
+                return window.deleteTransaction(id);
+            }
+            console.warn("deleteTransaction pending initialization");
         };
     </script>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -7587,7 +7613,8 @@
                 note: `To ${tAcc.name}: ${n}${noteSuffix}`,
                 date: dateIso,
                 exchangeRate: customRate,
-                transferTo: tId
+                transferTo: tId,
+                currency: sAcc.currency
             });
 
             // 2. Transfer In on Destination Account (Exact credited amount)
@@ -7600,7 +7627,8 @@
                 note: `From ${sAcc.name}: ${n}${noteSuffix}`,
                 date: dateIso,
                 exchangeRate: customRate,
-                transferFrom: sId
+                transferFrom: sId,
+                currency: tAcc.currency
             });
 
             // 3. If there was a transfer fee, log it as an expense on the source account
@@ -8317,6 +8345,7 @@
                 }
             );
         };
+        window.confirmDeleteTransaction = window.deleteTransaction;
 
         window.editTransaction = (id) => {
             const tx = state.data.transactions.find(t => t.id === id);
@@ -9036,7 +9065,7 @@
             let spent = 0;
             state.data.transactions.forEach(t => {
                 if (t.type === 'expense' && t.category === cat && t.date >= startOfMonth) {
-                    spent += parseFloat(t.amount);
+                    spent += window.getTransactionBaseAmount(t);
                 }
             });
 
@@ -9206,7 +9235,7 @@ window.renderBudgetUI = function () {
         let spent = 0;
         state.data.transactions.forEach(t => {
             if ((t.type === 'expense' || t.type === 'transfer_out') && t.category === cat && t.date >= startOfMonth) {
-                spent += parseFloat(t.amount);
+                spent += window.getTransactionBaseAmount(t);
             }
         });
         
@@ -9339,7 +9368,7 @@ window.getEnvelopeStats = function() {
         if (new Date(t.date) >= envelopeStartDate) {
             if ((t.type === 'expense' || t.type === 'transfer_out') && t.category) {
                 if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
-                stats.categories[t.category].spent += parseFloat(t.amount);
+                stats.categories[t.category].spent += window.getTransactionBaseAmount(t);
             }
         }
     });
@@ -9721,6 +9750,59 @@ window.viewBudgetReports = function() {
     lucide.createIcons();
 };
 
+window.downloadBudgetReport = function(id) {
+    const rep = state.data.budgetReports?.find(r => r.id === id);
+    if (!rep) return;
+    
+    const start = new Date(rep.startDate);
+    const end = new Date(rep.date);
+    
+    let text = `=======================================\n`;
+    text += `       MONTHLY BUDGET REPORT\n`;
+    text += `=======================================\n`;
+    text += `Period: ${start.toLocaleDateString()} to ${end.toLocaleDateString()}\n`;
+    text += `Unallocated Cash Remaining: AED ${rep.stats.unallocatedCash}\n`;
+    text += `Total Salary/Credit: AED ${rep.stats.totalCredit}\n`;
+    text += `Total Spent: AED ${Object.values(rep.stats.categories || {}).reduce((sum, c) => sum + (c.spent || 0), 0)}\n\n`;
+    
+    const txs = (state.data.transactions || []).filter(t => new Date(t.date) >= start && new Date(t.date) <= end && (t.type === 'expense' || t.type === 'transfer_out'));
+    
+    Object.keys(rep.stats.categories || {}).forEach(cat => {
+        const cStat = rep.stats.categories[cat];
+        text += `---------------------------------------\n`;
+        text += `CATEGORY: ${cat.toUpperCase()}\n`;
+        text += `Funded: AED ${cStat.funded} | Spent: AED ${cStat.spent} | Available: AED ${cStat.available}\n`;
+        text += `---------------------------------------\n`;
+        
+        const catTxs = txs.filter(t => t.category === cat);
+        if (catTxs.length === 0) {
+            text += `  (No transactions)\n`;
+        } else {
+            catTxs.forEach(t => {
+                const acc = state.data.accounts.find(a => a.id === t.accountId);
+                const cur = t.currency || (acc ? acc.currency : 'AED');
+                const baseAmt = window.getTransactionBaseAmount(t);
+                const nativeStr = cur !== 'AED' ? ` (${cur} ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})` : '';
+                text += `  [${new Date(t.date).toLocaleDateString()}] ${t.note || 'Expense'} - AED ${baseAmt.toFixed(2)}${nativeStr}\n`;
+            });
+        }
+        text += `\n`;
+    });
+    
+    text += `=======================================\n`;
+    text += `Generated by Personal Finance System\n`;
+    
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Budget_Report_${end.toLocaleDateString().replace(/\\//g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
 window.downloadBudgetReportPDF = function(id) {
     try {
         const rep = state.data.budgetReports?.find(r => r.id === id);
@@ -9998,13 +10080,18 @@ window.showCategoryDetails = function(cat) {
     } else {
         txs.forEach(t => {
             const acc = state.data.accounts.find(a => a.id === t.accountId);
+            const cur = t.currency || (acc ? acc.currency : 'AED');
+            const baseAmt = window.getTransactionBaseAmount(t);
+            const isNonBase = cur !== 'AED';
             content += `
                 <div class="flex justify-between items-center p-4 bg-slate-900/60 rounded-2xl border border-slate-700/70 shadow-sm hover:border-slate-600 transition-all">
                     <div class="text-left">
                         <p class="text-xs font-black text-white">${t.note || 'Expense'}</p>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} • ${acc ? acc.name : ''}</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} • ${acc ? acc.name : ''}${isNonBase ? ` • Native: ${cur} ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}</p>
                     </div>
-                    <p class="text-sm font-black text-rose-400 num-font">- AED ${parseFloat(t.amount).toLocaleString()}</p>
+                    <div class="text-right">
+                        <p class="text-sm font-black text-rose-400 num-font">- AED ${baseAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    </div>
                 </div>
             `;
         });
@@ -10480,8 +10567,13 @@ window.renderLedger = function(items) {
 
     sorted.forEach(t => {
         let accName = 'N/A';
-        if (t.accountId === 'virtual_writeoff') accName = 'Write-off';
-        else accName = state.data.accounts.find(a => a.id === t.accountId)?.name || 'N/A';
+        let acc = null;
+        if (t.accountId === 'virtual_writeoff') {
+            accName = 'Write-off';
+        } else {
+            acc = state.data.accounts.find(a => a.id === t.accountId);
+            accName = acc?.name || 'N/A';
+        }
         
         const isTransfer = t.type.includes('transfer');
         const isIncome = t.type === 'income' || t.type === 'transfer_in';
@@ -10498,7 +10590,8 @@ window.renderLedger = function(items) {
 
         const amtParts = Math.abs(t.amount).toFixed(2).split('.');
         const intAmt = new Intl.NumberFormat('en-US').format(parseInt(amtParts[0]));
-        const currSymbol = 'AED'; 
+        const txCur = t.currency || acc?.currency || 'AED';
+        const currSymbol = txCur === 'INR' ? '₹' : (txCur === 'AED' ? 'AED' : txCur); 
 
         html += `
         <div class="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 hover:bg-slate-800/60 transition-colors items-center group cursor-pointer" onclick="window.editTransaction('${t.id}')">
@@ -10508,8 +10601,9 @@ window.renderLedger = function(items) {
                     <span class="text-xs font-bold text-slate-300">${dateStr}</span>
                     <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">${timeStr}</span>
                 </div>
-                <!-- Mobile only amount -->
-                <div class="md:hidden text-right">
+                <!-- Mobile only amount & delete -->
+                <div class="md:hidden flex items-center gap-2 text-right">
+                    <button onclick="event.stopPropagation(); (window.deleteTransaction || window.confirmDeleteTransaction)('${t.id}')" class="text-[9px] font-black text-rose-500/70 hover:text-rose-400 uppercase tracking-wider border border-rose-500/30 rounded px-1.5 py-0.5" title="Delete">Del</button>
                     <p class="text-sm font-black ${colorClass} tracking-tight">${sign}${currSymbol} ${intAmt}<span class="text-[10px] opacity-50">.${amtParts[1]}</span></p>
                 </div>
             </div>
@@ -10529,7 +10623,7 @@ window.renderLedger = function(items) {
 
             <!-- Desktop Amount Column -->
             <div class="hidden md:flex col-span-4 items-center justify-end gap-4">
-                <button onclick="event.stopPropagation(); window.confirmDeleteTransaction('${t.id}')" class="text-[9px] font-black text-rose-500/50 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all uppercase tracking-widest border border-rose-500/0 hover:border-rose-500/50 rounded px-2 py-1">Delete</button>
+                <button onclick="event.stopPropagation(); (window.deleteTransaction || window.confirmDeleteTransaction)('${t.id}')" class="text-[9px] font-black text-rose-500/50 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all uppercase tracking-widest border border-rose-500/0 hover:border-rose-500/50 rounded px-2 py-1">Delete</button>
                 <p class="text-base font-black ${colorClass} tracking-tight num-font text-right w-28"><span class="text-[10px] opacity-70 mr-1">${sign}${currSymbol}</span>${intAmt}<span class="text-xs opacity-50 ml-0.5">.${amtParts[1]}</span></p>
             </div>
         </div>`;

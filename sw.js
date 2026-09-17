@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finz-v7-fix';
+const CACHE_NAME = 'finz-v11-fix';
 const ASSETS = [
     './',
     './index.html',

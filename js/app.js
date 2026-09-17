@@ -31,6 +31,24 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
         };
         window.state = state; // Expose globally for header scripts
 
+        // Helper: Convert any transaction amount to Base Currency (AED)
+        window.getTransactionBaseAmount = function (t) {
+            if (!t) return 0;
+            const amt = parseFloat(t.amount) || 0;
+            if (amt === 0) return 0;
+            const baseCur = (typeof state !== 'undefined' && state.data?.settings?.currency) ? state.data.settings.currency : 'AED';
+            const acc = (typeof state !== 'undefined' && state.data?.accounts) ? state.data.accounts.find(a => a.id === t.accountId) : null;
+            const cur = t.currency || (acc ? acc.currency : baseCur);
+            if (cur === baseCur) return amt;
+            const rate = parseFloat(t.exchangeRate) || parseFloat(state.data?.settings?.rate) || 22.75;
+            if (baseCur === 'AED' && cur === 'INR') {
+                return rate > 0 ? (amt / rate) : amt;
+            } else if (baseCur === 'INR' && cur === 'AED') {
+                return amt * rate;
+            }
+            return amt;
+        };
+
         // --- GLOBAL FUNCTION ASSIGNMENTS ---
         window.closeModal = () => {
             const c = document.getElementById('modal-content');
@@ -6116,10 +6134,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
             const rateSnapshot = state.data.settings.rate;
 
             state.data.transactions.push({
-                id: window.genId(), accountId: sId, amount: window.toCurrency(val), type: 'transfer_out', category: tCat, note: `To ${tAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
+                id: window.genId(), accountId: sId, amount: window.toCurrency(val), type: 'transfer_out', category: tCat, note: `To ${tAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot, currency: sAcc.currency
             });
             state.data.transactions.push({
-                id: window.genId(), accountId: tId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: tCat, note: `From ${sAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot
+                id: window.genId(), accountId: tId, amount: window.toCurrency(finalAmt), type: 'transfer_in', category: tCat, note: `From ${sAcc.name}: ${n}${noteSuffix} `, date: dateIso, exchangeRate: rateSnapshot, currency: tAcc.currency
             });
 
             window.recalculateBalances();
@@ -6814,6 +6832,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
                 }
             );
         };
+        window.confirmDeleteTransaction = window.deleteTransaction;
 
         window.editTransaction = (id) => {
             const tx = state.data.transactions.find(t => t.id === id);
@@ -7836,7 +7855,7 @@ window.getEnvelopeStats = function() {
         if (new Date(t.date) >= envelopeStartDate) {
             if ((t.type === 'expense' || t.type === 'transfer_out') && t.category) {
                 if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
-                stats.categories[t.category].spent += parseFloat(t.amount);
+                stats.categories[t.category].spent += window.getTransactionBaseAmount(t);
             }
         }
     });
@@ -8218,6 +8237,59 @@ window.viewBudgetReports = function() {
     lucide.createIcons();
 };
 
+window.downloadBudgetReport = function(id) {
+    const rep = state.data.budgetReports?.find(r => r.id === id);
+    if (!rep) return;
+    
+    const start = new Date(rep.startDate);
+    const end = new Date(rep.date);
+    
+    let text = `=======================================\n`;
+    text += `       MONTHLY BUDGET REPORT\n`;
+    text += `=======================================\n`;
+    text += `Period: ${start.toLocaleDateString()} to ${end.toLocaleDateString()}\n`;
+    text += `Unallocated Cash Remaining: AED ${rep.stats.unallocatedCash}\n`;
+    text += `Total Salary/Credit: AED ${rep.stats.totalCredit}\n`;
+    text += `Total Spent: AED ${Object.values(rep.stats.categories || {}).reduce((sum, c) => sum + (c.spent || 0), 0)}\n\n`;
+    
+    const txs = (state.data.transactions || []).filter(t => new Date(t.date) >= start && new Date(t.date) <= end && (t.type === 'expense' || t.type === 'transfer_out'));
+    
+    Object.keys(rep.stats.categories || {}).forEach(cat => {
+        const cStat = rep.stats.categories[cat];
+        text += `---------------------------------------\n`;
+        text += `CATEGORY: ${cat.toUpperCase()}\n`;
+        text += `Funded: AED ${cStat.funded} | Spent: AED ${cStat.spent} | Available: AED ${cStat.available}\n`;
+        text += `---------------------------------------\n`;
+        
+        const catTxs = txs.filter(t => t.category === cat);
+        if (catTxs.length === 0) {
+            text += `  (No transactions)\n`;
+        } else {
+            catTxs.forEach(t => {
+                const acc = state.data.accounts.find(a => a.id === t.accountId);
+                const cur = t.currency || (acc ? acc.currency : 'AED');
+                const baseAmt = window.getTransactionBaseAmount(t);
+                const nativeStr = cur !== 'AED' ? ` (${cur} ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})` : '';
+                text += `  [${new Date(t.date).toLocaleDateString()}] ${t.note || 'Expense'} - AED ${baseAmt.toFixed(2)}${nativeStr}\n`;
+            });
+        }
+        text += `\n`;
+    });
+    
+    text += `=======================================\n`;
+    text += `Generated by Personal Finance System\n`;
+    
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Budget_Report_${end.toLocaleDateString().replace(/\\//g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
 window.downloadBudgetReportPDF = function(id) {
     try {
         const rep = state.data.budgetReports?.find(r => r.id === id);
@@ -8495,13 +8567,18 @@ window.showCategoryDetails = function(cat) {
     } else {
         txs.forEach(t => {
             const acc = state.data.accounts.find(a => a.id === t.accountId);
+            const cur = t.currency || (acc ? acc.currency : 'AED');
+            const baseAmt = window.getTransactionBaseAmount(t);
+            const isNonBase = cur !== 'AED';
             content += `
                 <div class="flex justify-between items-center p-4 bg-slate-900/60 rounded-2xl border border-slate-700/70 shadow-sm hover:border-slate-600 transition-all">
                     <div class="text-left">
                         <p class="text-xs font-black text-white">${t.note || 'Expense'}</p>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} • ${acc ? acc.name : ''}</p>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} • ${acc ? acc.name : ''}${isNonBase ? ` • Native: ${cur} ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}</p>
                     </div>
-                    <p class="text-sm font-black text-rose-400 num-font">- AED ${parseFloat(t.amount).toLocaleString()}</p>
+                    <div class="text-right">
+                        <p class="text-sm font-black text-rose-400 num-font">- AED ${baseAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    </div>
                 </div>
             `;
         });
@@ -8866,8 +8943,13 @@ window.renderLedger = function(items) {
 
     sorted.forEach(t => {
         let accName = 'N/A';
-        if (t.accountId === 'virtual_writeoff') accName = 'Write-off';
-        else accName = state.data.accounts.find(a => a.id === t.accountId)?.name || 'N/A';
+        let acc = null;
+        if (t.accountId === 'virtual_writeoff') {
+            accName = 'Write-off';
+        } else {
+            acc = state.data.accounts.find(a => a.id === t.accountId);
+            accName = acc?.name || 'N/A';
+        }
         
         const isTransfer = t.type.includes('transfer');
         const isIncome = t.type === 'income' || t.type === 'transfer_in';
@@ -8884,7 +8966,8 @@ window.renderLedger = function(items) {
 
         const amtParts = Math.abs(t.amount).toFixed(2).split('.');
         const intAmt = new Intl.NumberFormat('en-US').format(parseInt(amtParts[0]));
-        const currSymbol = 'AED'; 
+        const txCur = t.currency || acc?.currency || 'AED';
+        const currSymbol = txCur === 'INR' ? '₹' : (txCur === 'AED' ? 'AED' : txCur); 
 
         html += `
         <div class="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 p-4 hover:bg-slate-800/60 transition-colors items-center group cursor-pointer" onclick="window.editTransaction('${t.id}')">
@@ -8915,7 +8998,7 @@ window.renderLedger = function(items) {
 
             <!-- Desktop Amount Column -->
             <div class="hidden md:flex col-span-4 items-center justify-end gap-4">
-                <button onclick="event.stopPropagation(); window.confirmDeleteTransaction('${t.id}')" class="text-[9px] font-black text-rose-500/50 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all uppercase tracking-widest border border-rose-500/0 hover:border-rose-500/50 rounded px-2 py-1">Delete</button>
+                <button onclick="event.stopPropagation(); window.deleteTransaction('${t.id}')" class="text-[9px] font-black text-rose-500/50 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all uppercase tracking-widest border border-rose-500/0 hover:border-rose-500/50 rounded px-2 py-1">Delete</button>
                 <p class="text-base font-black ${colorClass} tracking-tight num-font text-right w-28"><span class="text-[10px] opacity-70 mr-1">${sign}${currSymbol}</span>${intAmt}<span class="text-xs opacity-50 ml-0.5">.${amtParts[1]}</span></p>
             </div>
         </div>`;
