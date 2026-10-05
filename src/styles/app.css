@@ -1,0 +1,458 @@
+
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+        :root {
+            /* Midnight Slate & Rose Fintech Theme */
+            --primary: #e11d48; /* rose-600 */
+            --primary-dark: #be123c; /* rose-700 */
+            --primary-light: #fff1f2; /* rose-50 */
+            --primary-rgb: 225, 29, 72;
+
+            --success: #10b981; /* emerald-500 */
+            --success-dark: #059669; /* emerald-600 */
+            --success-bg: rgba(16, 185, 129, 0.15);
+
+            --danger: #e11d48; /* rose-600 */
+            --danger-bg: rgba(225, 29, 72, 0.15);
+
+            --bg-main: #0f172a; /* slate-900 */
+            --bg-card: #1e293b; /* slate-800 */
+            --bg-sub: #334155; /* slate-700 */
+            --bg-input: #0f172a; /* slate-900 */
+
+            --text-main: #f8fafc; /* slate-50 */
+            --text-muted: #94a3b8; /* slate-400 */
+            --text-inv: #0f172a; /* slate-900 */
+
+            --btn-solid: #e11d48;
+            --btn-text: #ffffff;
+            --border-color: #334155;
+        }
+
+        /* 1. DARK THEME BASE ADAPTATION */
+        body {
+            background-color: var(--bg-main) !important;
+            color: var(--text-main) !important;
+            font-family: 'Outfit', sans-serif;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease;
+        }
+
+        .bg-slate-50 {
+            background-color: var(--bg-main) !important;
+        }
+
+        .bg-white {
+            background-color: var(--bg-card) !important;
+            color: var(--text-main) !important;
+        }
+
+        .bg-slate-100 {
+            background-color: var(--bg-sub) !important;
+        }
+
+        .text-slate-900 {
+            color: var(--text-main) !important;
+        }
+
+        .text-slate-500,
+        .text-slate-400 {
+            color: var(--text-muted) !important;
+        }
+
+        .text-slate-600,
+        .text-slate-700 {
+            color: #cbd5e1 !important;
+        }
+
+        .border-slate-200,
+        .border-slate-100 {
+            border-color: #334155 !important;
+        }
+
+        /* 2. UNIVERSAL FORM CONTROLS & CONTRAST ENGINE */
+        input,
+        select,
+        textarea {
+            background-color: #0f172a !important;
+            color: #f8fafc !important;
+            border: 1.5px solid #334155 !important;
+            border-radius: 1rem !important;
+            font-family: inherit !important;
+            box-sizing: border-box !important;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="email"],
+        input[type="password"],
+        input[type="date"],
+        input[type="tel"],
+        input[type="search"],
+        textarea {
+            background-color: #0f172a !important;
+            color: #f8fafc !important;
+            border: 1.5px solid #334155 !important;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: #e11d48 !important;
+            background-color: #0b1120 !important;
+            color: #ffffff !important;
+            outline: none !important;
+            box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.25) !important;
+        }
+
+        /* Placeholders */
+        input::placeholder,
+        textarea::placeholder {
+            color: #64748b !important;
+            opacity: 1 !important;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(0.9);
+            cursor: pointer;
+        }
+
+        /* 3. SELECT & DROPDOWN CHEVRON STYLING */
+        select {
+            background-color: #0f172a !important;
+            color: #f8fafc !important;
+            border: 1.5px solid #334155 !important;
+            cursor: pointer !important;
+            -webkit-appearance: none !important;
+            -moz-appearance: none !important;
+            appearance: none !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 1rem center !important;
+            background-size: 1.1em 1.1em !important;
+            padding-right: 2.75rem !important;
+        }
+
+        select:focus {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23e11d48'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+        }
+
+        /* FIX: Dropdown option popups */
+        option,
+        optgroup {
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            font-weight: 600 !important;
+            padding: 12px 16px !important;
+        }
+
+        option:hover,
+        option:focus,
+        option:checked {
+            background-color: #e11d48 !important;
+            color: #ffffff !important;
+        }
+
+        /* 4. MODAL CONTAINERS & UNIFORM ROUNDED CORNERS */
+        #modal-content {
+            background: transparent !important;
+        }
+
+        /* Dialog overlays */
+        #confirm-modal > div,
+        #prompt-modal > div,
+        #contact-modal > div,
+        #reminder-overlay > div,
+        #smart-input-modal > div {
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            border: 1px solid #334155 !important;
+            border-radius: 2.5rem !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+            overflow: hidden !important;
+        }
+
+        /* Modal Typography & Labels */
+        #modal-content h1, #modal-content h2, #modal-content h3, #modal-content h4,
+        #confirm-modal h1, #confirm-modal h2, #confirm-modal h3, #confirm-modal h4,
+        #prompt-modal h1, #prompt-modal h2, #prompt-modal h3, #prompt-modal h4,
+        #contact-modal h1, #contact-modal h2, #contact-modal h3, #contact-modal h4,
+        #reminder-overlay h1, #reminder-overlay h2, #reminder-overlay h3, #reminder-overlay h4 {
+            color: #ffffff !important;
+            font-weight: 800 !important;
+        }
+
+        #modal-content p,
+        #confirm-modal p,
+        #prompt-modal p,
+        #contact-modal p,
+        #reminder-overlay p {
+            color: #94a3b8 !important;
+        }
+
+        #modal-content label,
+        #confirm-modal label,
+        #prompt-modal label,
+        #contact-modal label,
+        #reminder-overlay label {
+            color: #cbd5e1 !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.05em !important;
+        }
+
+        /* 5. PRIMARY & SECONDARY ACTION BUTTONS */
+        #btn-save-tx,
+        #btn-save-acc,
+        #confirm-yes-btn,
+        #prompt-yes-btn,
+        #remit-settle-btn {
+            background-color: #e11d48 !important;
+            color: #ffffff !important;
+            font-weight: 800 !important;
+            border: 1px solid rgba(225, 29, 72, 0.5) !important;
+            border-radius: 1.25rem !important;
+            box-shadow: 0 4px 20px rgba(225, 29, 72, 0.35) !important;
+            transition: all 0.2s ease !important;
+        }
+
+        #btn-save-tx:hover,
+        #btn-save-acc:hover,
+        #confirm-yes-btn:hover,
+        #prompt-yes-btn:hover,
+        #remit-settle-btn:hover {
+            background-color: #be123c !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 6px 25px rgba(225, 29, 72, 0.5) !important;
+        }
+
+        #confirm-cancel-btn,
+        #remit-resched-btn {
+            background-color: #334155 !important;
+            color: #cbd5e1 !important;
+            border: 1px solid #475569 !important;
+            border-radius: 1.25rem !important;
+        }
+
+        #confirm-cancel-btn:hover,
+        #remit-resched-btn:hover {
+            background-color: #475569 !important;
+            color: #ffffff !important;
+        }
+
+        /* 6. EXPENSE / INCOME TOGGLES */
+        .btn-toggle-expense {
+            background-color: #e11d48 !important;
+            color: #ffffff !important;
+            border: 2px solid #fb7185 !important;
+            border-radius: 1rem !important;
+            box-shadow: 0 4px 15px rgba(225, 29, 72, 0.3) !important;
+        }
+
+        .btn-toggle-income {
+            background-color: #10b981 !important;
+            color: #ffffff !important;
+            border: 2px solid #34d399 !important;
+            border-radius: 1rem !important;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3) !important;
+        }
+
+        .btn-toggle-off {
+            background-color: #0f172a !important;
+            color: #64748b !important;
+            border: 2px solid #334155 !important;
+            border-radius: 1rem !important;
+        }
+
+        /* 7. FINANCIAL SEMANTIC BADGES */
+        .badge-income {
+            background-color: rgba(16, 185, 129, 0.15) !important;
+            color: #34d399 !important;
+            border: 1px solid rgba(16, 185, 129, 0.3) !important;
+            border-radius: 9999px !important;
+        }
+
+        .badge-expense {
+            background-color: rgba(225, 29, 72, 0.15) !important;
+            color: #fb7185 !important;
+            border: 1px solid rgba(225, 29, 72, 0.3) !important;
+            border-radius: 9999px !important;
+        }
+
+        .badge-transfer {
+            background-color: rgba(59, 130, 246, 0.15) !important;
+            color: #60a5fa !important;
+            border: 1px solid rgba(59, 130, 246, 0.3) !important;
+            border-radius: 9999px !important;
+        }
+
+        /* 8. TABLES, LISTS & SCROLLBARS */
+        table {
+            color: #f8fafc !important;
+        }
+
+        th {
+            color: #94a3b8 !important;
+            background-color: #0f172a !important;
+            border-bottom: 2px solid #334155 !important;
+        }
+
+        td {
+            color: #f8fafc !important;
+            border-bottom: 1px solid #1e293b !important;
+        }
+
+        tr:hover td {
+            background-color: rgba(51, 65, 85, 0.4) !important;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 10px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* CYBER-SLATE IDENTITY */
+        .logo-text {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 50%, var(--text-main) 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            font-weight: 900;
+            position: relative;
+        }
+
+        /* MODERN FINTECH LOGO */
+        .fs-logo-modern {
+            position: relative;
+            background-color: #0f172a;
+            color: white;
+            font-weight: 900;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--primary);
+            box-shadow: 0 0 15px -3px rgba(var(--primary-rgb), 0.4);
+            transition: all 0.5s ease;
+        }
+
+        .fs-logo-modern::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 150%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: skewX(-20deg);
+            animation: modernScan 4s infinite linear;
+            pointer-events: none;
+        }
+
+        @keyframes modernScan {
+            0% { left: -150%; }
+            20% { left: 150%; }
+            100% { left: 150%; }
+        }
+
+        /* Scanning Light Effect */
+        .scan-light {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scan-light::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transform: skewX(-20deg);
+            animation: scan 4s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            0% { left: -150%; }
+            20% { left: 150%; }
+            100% { left: 150%; }
+        }
+
+        /* Smooth UI Transitions */
+        .card-enter {
+            animation: cardEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+        }
+
+        @keyframes cardEnter {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Hover Lifts */
+        .hover-lift {
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-4px) scale(1.01);
+        }
+
+        .active-press:active {
+            transform: scale(0.95);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .loader {
+            border: 2px solid #334155;
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #app-content,
+        #auth-screen {
+            display: none;
+        }
+
+        .num-font,
+        .money-font {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            font-weight: 700;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    

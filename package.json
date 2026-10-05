@@ -1,0 +1,38 @@
+{
+  "name": "finz",
+  "version": "2.7.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src js scripts --no-warn-ignored",
+    "test": "node --test --test-isolation=none tests/*.test.cjs",
+    "test:browser": "node scripts/build.mjs --test && node tests/browser-review.cjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-finz \"node --test --test-isolation=none tests/firestore.rules.cjs\"",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "build:release": "node scripts/build.mjs --release"
+  },
+  "dependencies": {
+    "firebase": "12.19.0",
+    "lucide": "1.47.0",
+    "chart.js": "4.5.1",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.8",
+    "dompurify": "3.4.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@firebase/rules-unit-testing": "5.0.2",
+    "acorn": "8.18.0",
+    "acorn-walk": "8.3.5",
+    "esbuild": "0.28.2",
+    "eslint": "10.11.0",
+    "firebase-tools": "15.30.2",
+    "playwright": "1.63.0",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.9.3"
+  }
+}

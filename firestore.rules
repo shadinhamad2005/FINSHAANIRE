@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(appId, userId) {
+      return request.auth != null && request.auth.uid == userId && appId == 'finshaanire-v2';
+    }
+    function legacyLedger(data) {
+      return data.keys().hasAll(['accounts', 'transactions', 'debts', 'settings'])
+        && data.accounts is list && data.transactions is list && data.debts is list
+        && data.settings is map && data.settings.rate is number && data.settings.rate > 0
+        && !data.settings.keys().hasAny(['messagingToken', 'whapiToken'])
+        && !data.keys().hasAny(['_ledgerChunks', '_ledgerFormat']);
+    }
+    function manifest(data) {
+      return data.keys().hasOnly(['_ledgerChunks', '_ledgerFormat'])
+        && data._ledgerFormat == 1 && data._ledgerChunks is list
+        && data._ledgerChunks.size() > 0 && data._ledgerChunks.size() <= 200;
+    }
+    match /artifacts/{appId}/users/{userId}/finance/{documentId} {
+      allow read: if owner(appId, userId) && (documentId == 'main' || documentId.matches('main_chunk_[a-f0-9-]+_[0-9]+'));
+      allow create, update: if owner(appId, userId) && (
+        (documentId == 'main' && (legacyLedger(request.resource.data) || manifest(request.resource.data))) ||
+        (documentId.matches('main_chunk_[a-f0-9-]+_[0-9]+') && request.resource.data.keys().hasOnly(['json'])
+          && request.resource.data.json is string && request.resource.data.json.size() <= 700000)
+      );
+      allow delete: if owner(appId, userId) && documentId.matches('main_chunk_[a-f0-9-]+_[0-9]+');
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
