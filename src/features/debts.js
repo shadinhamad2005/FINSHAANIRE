@@ -585,39 +585,42 @@ actions.renderDebtUI = function () {
                                 <!-- Contact Selector -->
                                 <div id="debt-party-container">
                                     <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Contact / Counterparty</label>
-                                    <div class="flex items-center gap-2">
-                                        <select id="dw" class="w-full bg-slate-900/90 border border-slate-700 p-3.5 rounded-xl text-white font-bold text-xs outline-none">
+                                    <div class="flex items-stretch gap-2">
+                                        <select id="dw" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none focus:border-rose-500/50 transition-colors">
                                             <option value="" class="bg-slate-800 text-slate-400">-- Select Person --</option>
                                             ${(state.data.contacts || []).map(c => FinzUI.html`<option value="${c.name}" class="bg-slate-800">${c.name}</option>`).join('')}
                                         </select>
-                                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.openContactModal() })}" class="bg-rose-500/20 text-rose-400 p-3.5 rounded-xl border border-rose-500/30 hover:bg-rose-500/30 transition-colors shrink-0" title="Add New Contact">
+                                        <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.openContactModal() })}" class="bg-rose-500/20 text-rose-400 px-3.5 rounded-xl border border-rose-500/30 hover:bg-rose-500/30 transition-colors shrink-0 flex items-center justify-center" title="Add New Contact">
                                             <i data-lucide="user-plus" class="w-4 h-4"></i>
                                         </button>
                                     </div>
                                 </div>
 
-                                <!-- Meta Info (Account & Date) -->
+                                <!-- Account Link -->
+                                <div>
+                                    <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Account Link</label>
+                                    <select id="ds" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none focus:border-rose-500/50 transition-colors">
+                                        <option value="" class="bg-slate-800 text-slate-400">-- No Account --</option>
+                                        ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}" class="bg-slate-800">${a.name}</option>`).join('')}
+                                    </select>
+                                </div>
+
+                                <!-- Credit Dates (Given Date & Repayment Due Date) -->
                                 <div class="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Account Link</label>
-                                        <select id="ds" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none">
-                                            <option value="" class="bg-slate-800">-- No Account --</option>
-                                            ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}" class="bg-slate-800">${a.name}</option>`).join('')}
-                                        </select>
+                                        <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Date Given / Borrowed</label>
+                                        <input type="date" id="debt-given-date" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none focus:border-rose-500/50 transition-colors">
                                     </div>
                                     <div>
-                                        <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Credit Dates</label>
-                                        <label class="text-xs text-slate-400">Credit given / borrowed date</label>
-                                        <input type="date" id="debt-given-date" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}" class="w-full bg-slate-900/90 border border-slate-700 p-2.5 rounded-xl text-white font-bold text-xs outline-none">
-                                        <label class="text-xs text-slate-400">Repayment due date</label>
-                                        <input type="date" id="drd" class="w-full bg-slate-900/90 border border-slate-700 p-2.5 rounded-xl text-white font-bold text-xs outline-none">
+                                        <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Repayment Due Date</label>
+                                        <input type="date" id="drd" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none focus:border-rose-500/50 transition-colors">
                                     </div>
                                 </div>
 
                                 <!-- Note -->
                                 <div>
                                     <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Note / Reason</label>
-                                    <input type="text" id="dn" placeholder="e.g. Loan, Dinner split, Car advance" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none">
+                                    <input type="text" id="dn" placeholder="e.g. Loan, Dinner split, Car advance" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none focus:border-rose-500/50 transition-colors">
                                 </div>
 
                                 <!-- BNPL Fields -->
