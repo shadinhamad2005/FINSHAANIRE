@@ -85,22 +85,21 @@ actions.generateAnnualReport = function () {
                 lastYear.setDate(today.getDate() - 365);
                 const startDate = firstDate > lastYear ? firstDate : lastYear;
                 
+                // Display copies only: saved records are never annotated.
                 let yearlyTx = (state.data.transactions || []).filter(t => new Date(t.date) >= startDate);
                 if (yearlyTx.length === 0) yearlyTx = [...(state.data.transactions || [])];
+                yearlyTx = yearlyTx.map(t => ({ ...t, _currency: FinzCore.txCurrency(t, state.data.accounts) }));
                 
                 let sumInc = 0;
                 let sumExp = 0;
                 let cats = {};
                 
+                // Inflow = earned income; outflow = real spending. Moving money between your own
+                // accounts, opening balances and loans/repayments would otherwise inflate both sides.
                 yearlyTx.forEach(t => {
-                    const acc = state.data.accounts.find(a => a.id === t.accountId);
-                    const currency = acc ? acc.currency : 'AED';
-                    t._currency = currency;
-                    
-                    const amtBas = actions.toChartCur(parseFloat(t.amount), currency);
-
-                    if (['income', 'transfer_in'].includes(t.type)) sumInc += amtBas;
-                    if (['expense', 'transfer_out'].includes(t.type)) {
+                    const amtBas = actions.toChartCur(parseFloat(t.amount), t._currency);
+                    if (FinzCore.isEarnedIncome(t)) sumInc += amtBas;
+                    if (FinzCore.isSpending(t)) {
                         sumExp += amtBas;
                         cats[t.category] = (cats[t.category] || 0) + amtBas;
                     }
@@ -127,7 +126,7 @@ actions.generateAnnualReport = function () {
                 doc.setTextColor(150, 150, 150);
                 doc.setFontSize(11);
                 doc.setFont("helvetica", "normal");
-                const cycleText = `Reporting Period: ${startDate.toISOString().split('T')[0]} to ${today.toISOString().split('T')[0]}`;
+                const cycleText = `Reporting Period: ${FinzCore.localDateKey(startDate)} to ${FinzCore.localDateKey(today)}`;
                 doc.text(cycleText, 20, 150);
                 doc.text(`Account Holder: ${state.user?.email || 'Valued Client'}`, 20, 158);
                 
@@ -233,7 +232,7 @@ actions.generateAnnualReport = function () {
                     columnStyles: { 3: { halign: 'right' } }
                 });
                 
-                doc.save(`FINZ_Financial_Report_${today.toISOString().split('T')[0]}.pdf`);
+                doc.save(`FINZ_Financial_Report_${FinzCore.localDateKey(today)}.pdf`);
                 actions.showToast("Financial Statement PDF Downloaded!", "success");
             } catch (err) {
                 console.error("PDF Generate Error", err);
@@ -274,6 +273,9 @@ actions.renderZakatCalculator = function () {
                 liabilities += val;
             });
 
+            // Credit card balances owed are deductible debts too.
+            state.data.accounts.filter(a => a.type === 'Credit Card' && Number(a.balance) < 0)
+                .forEach(a => { liabilities += -Number(a.balance) * (a.currency === 'AED' ? r : 1); });
             const netZakatable = Math.max(0, qualifying - liabilities);
             const zakatDue = netZakatable * 0.025; // 2.5%
 
@@ -341,7 +343,7 @@ actions.renderZakatCalculator = function () {
 
 actions.renderZakatPaymentModal = function () {
             const zakatAmount = actions.currentZakatDue ? Math.round(actions.currentZakatDue) : 0;
-            const validAccounts = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type));
+            const validAccounts = actions.cashAccounts();
             
             let accountOptions = validAccounts.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency} ${a.balance.toLocaleString()})</option>`).join('');
 
@@ -392,7 +394,7 @@ actions.processZakatPayment = async function () {
                 finalDeduction = amt / r;
             }
 
-            if (acc.balance < finalDeduction) {
+            if (actions.availableToSpend(acc) < finalDeduction) {
                 actions.showToast("Insufficient funds in selected account.", "error");
                 return;
             }
@@ -410,7 +412,8 @@ actions.processZakatPayment = async function () {
                 amount: finalDeduction,
                 currency: acc.currency,
                 category: 'Zakat',
-                date: new Date().toISOString().split('T')[0],
+                date: new Date().toISOString(),
+                exchangeRate: state.data.settings.rate,
                 note: 'Annual Zakat Payment',
                 timestamp: Date.now()
             };
@@ -470,8 +473,10 @@ actions.renderDashboard = function (instant = false) {
 
             // 1. CALC FINANCIAL HEALTH SCORE VARIABLES
             // A. Savings Rate (Last 30 Days)
-            const last30Inc = txs.filter(t => t.type === 'income' && new Date(t.date) >= d).reduce((s, t) => s + actions.toChartCur(Number(t.amount), t.currency || 'AED', r), 0);
-            const last30Exp = txs.filter(t => t.type === 'expense' && new Date(t.date) >= d).reduce((s, t) => s + actions.toChartCur(Number(t.amount), t.currency || 'AED', r), 0);
+            const cur = t => FinzCore.txCurrency(t, state.data.accounts);
+            // Earned income and real spending only (no opening balances, loans or repayments).
+            const last30Inc = txs.filter(t => FinzCore.isEarnedIncome(t) && new Date(t.date) >= d).reduce((s, t) => s + actions.toChartCur(Number(t.amount), cur(t), r), 0);
+            const last30Exp = txs.filter(t => FinzCore.isSpending(t) && new Date(t.date) >= d).reduce((s, t) => s + actions.toChartCur(Number(t.amount), cur(t), r), 0);
             const savingsRate = last30Inc > 0 ? Math.max(0, ((last30Inc - last30Exp) / last30Inc) * 100) : 0;
 
             // B. Runway (Months)
@@ -496,21 +501,25 @@ actions.renderDashboard = function (instant = false) {
             // 2. SPENDING RHYTHM (Day of Week)
             const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             const dayCounts = [0, 0, 0, 0, 0, 0, 0];
-            txs.filter(t => t.type === 'expense').forEach(t => {
+            txs.filter(t => FinzCore.isSpending(t)).forEach(t => {
                 const day = new Date(t.date).getDay();
-                dayCounts[day] += actions.toChartCur(Number(t.amount), t.currency || 'AED', r);
+                dayCounts[day] += actions.toChartCur(Number(t.amount), cur(t), r);
             });
 
             // 3. EXPENSE RADAR (Categories)
             const catMap = {};
-            txs.filter(t => t.type === 'expense').forEach(t => {
-                catMap[t.category] = (catMap[t.category] || 0) + actions.toChartCur(Number(t.amount), t.currency || 'AED', r);
+            txs.filter(t => FinzCore.isSpending(t)).forEach(t => {
+                catMap[t.category] = (catMap[t.category] || 0) + actions.toChartCur(Number(t.amount), cur(t), r);
             });
             const top5Cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
             // 4. FREEDOM RATIO (Fixed vs Free)
             // Fixed = Sum of Subscriptions + Debt EMI (Approx)
-            const monthlyFixed = (state.data.subscriptions || []).reduce((s, sub) => s + Number(sub.amount), 0); // Simplified
+            // Recurring outgoings per month, in the chart currency (yearly plans spread over 12 months).
+            const monthlyFixed = (state.data.subscriptions || []).filter(sub => sub.type !== 'income').reduce((s, sub) => {
+                const subCur = state.data.accounts.find(a => a.id === sub.accountId)?.currency || 'AED';
+                return s + actions.toChartCur(Number(sub.amount) / (sub.billingCycle === 'Yearly' ? 12 : 1), subCur, r);
+            }, 0);
             const monthlyIncAvg = last30Inc || 1;
             const fixedPct = Math.min(100, Math.round((monthlyFixed / monthlyIncAvg) * 100));
             const freePct = 100 - fixedPct;
@@ -536,7 +545,7 @@ actions.renderDashboard = function (instant = false) {
 
             // 2. Annual Expenses (Extrapolated from last 6 months)
             const d6m = new Date(); d6m.setMonth(d6m.getMonth() - 6);
-            const recentExp = state.data.transactions.filter(t => t.type === 'expense' && new Date(t.date) >= d6m).reduce((s, t) => {
+            const recentExp = state.data.transactions.filter(t => FinzCore.isSpending(t) && new Date(t.date) >= d6m).reduce((s, t) => {
                 const acc = state.data.accounts.find(a => a.id === t.accountId);
                 const cur = t.currency || acc?.currency || 'AED';
                 return s + actions.toChartCur(Number(t.amount), cur, r);
@@ -546,8 +555,9 @@ actions.renderDashboard = function (instant = false) {
             const annualExp = avgMonthlyExpOLD * 12;
 
             // Output Metrics
-            const freedomYears = annualExp > 0 ? (totalNW / annualExp).toFixed(1) : '∞';
-            const freedomDate = annualExp > 0 ? new Date(new Date().setFullYear(new Date().getFullYear() + parseFloat(freedomYears))) : 'Forever';
+            const freedomYears = annualExp > 0 ? Math.max(0, totalNW / annualExp).toFixed(1) : '∞';
+            // "Runway" date: how long current net worth would cover current spending.
+            const freedomDate = annualExp > 0 ? new Date(Date.now() + parseFloat(freedomYears) * 365.25 * 86400000) : 'Forever';
             const dateStr = freedomDate === 'Forever' ? 'Infinity' : freedomDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
             // HTML MERGE
@@ -726,35 +736,142 @@ actions.csvExport = function () {
                 const acc = state.data.accounts.find(a => a.id === t.accountId);
                 const accName = acc ? acc.name : 'Unknown';
                 
-                const cleanNote = (t.note || '').replace(/"/g, '""');
-                const cleanCat = (t.category || '').replace(/"/g, '""');
-                const cleanAcc = accName.replace(/"/g, '""');
-                
+                // Local calendar day, and text cells guarded against spreadsheet formula injection.
                 const row = [
-                    t.date ? t.date.split('T')[0] : '',
-                    `"${cleanAcc}"`,
+                    FinzCore.localDateKey(t.date),
+                    FinzCore.csvCell(accName),
                     t.type || '',
-                    `"${cleanCat}"`,
+                    FinzCore.csvCell(t.category || ''),
                     t.amount || 0,
                     t.currency || (acc ? acc.currency : ''),
-                    `"${cleanNote}"`
+                    FinzCore.csvCell(t.note || '')
                 ];
                 rows.push(row.join(','));
             });
 
             const csvString = rows.join('\n');
-            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' }); // BOM so Excel reads ₹ and Arabic text
             const url = URL.createObjectURL(blob);
             
             const link = document.createElement("a");
             link.setAttribute("href", url);
-            link.setAttribute("download", `FI_SHAANIRE_Transactions_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute("download", `FI_SHAANIRE_Transactions_${FinzCore.localDateKey(new Date())}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
             
             actions.showToast("CSV Exported Successfully", "success");
+        };
+
+// The incoming side of a transfer: linked by group ID, or (older records) by note and time.
+actions.findTransferCounterpart = function (tx) {
+            if (tx.transferGroupId) return state.data.transactions.find(t => t.transferGroupId === tx.transferGroupId && t.type === 'transfer_in');
+            const userNote = String(tx.note || '').split(':')[1]?.trim();
+            if (!userNote) return undefined;
+            return state.data.transactions.find(t2 => t2.type === 'transfer_in' && String(t2.note || '').includes(userNote) &&
+                Math.abs(new Date(t2.date) - new Date(tx.date)) < 2000);
+        };
+
+// ---- Year-end tax & zakat pack (PDF) ----
+actions.generateYearPack = function (year) {
+            year = Number(year) || new Date().getFullYear();
+            const pack = FinzCore.yearPack(state.data, year);
+            actions.renderZakatCalculator(); // Computes today's zakat estimate (actions.currentZakatDue, INR)
+            const zakatDueINR = Number(actions.currentZakatDue) || 0;
+            const fmt = (v, cur = 'AED') => `${cur} ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            try {
+                const { jsPDF } = libraries.jspdf;
+                const doc = new jsPDF();
+                doc.setFillColor(15, 23, 42); doc.rect(0, 0, 210, 30, 'F');
+                doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+                doc.text(`FINZ Year-End Pack ${year}`, 14, 19);
+                doc.setTextColor(60, 60, 60); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+                doc.text(`Generated ${FinzCore.localDateKey(new Date())} for ${state.user?.email || ''}. Figures come from your FINZ records; check them before any filing.`, 14, 38);
+                doc.autoTable({ startY: 44, head: [['Calendar year ' + year, 'Amount']], theme: 'striped', headStyles: { fillColor: [15, 23, 42] },
+                    body: [['Earned income (all accounts, in AED)', fmt(pack.income)], ['Spending (in AED)', fmt(pack.spending)], ['Zakat paid (in AED)', fmt(pack.zakatPaid)],
+                        ['Remittances sent AED -> INR', `${pack.remittances.count} transfers: ${fmt(pack.remittances.sentAED)} -> ${fmt(pack.remittances.receivedINR, 'INR')}`]] });
+                const inr = Object.entries(pack.inrIncome);
+                doc.autoTable({ startY: doc.lastAutoTable.finalY + 8, head: [[`India: INR income, ${pack.indiaFinancialYear}`, 'Amount']], theme: 'striped', headStyles: { fillColor: [15, 23, 42] },
+                    body: inr.length ? inr.map(([cat, v]) => [cat, fmt(v, 'INR')]) : [['No INR income recorded in this period', '-']] });
+                doc.autoTable({ startY: doc.lastAutoTable.finalY + 8, head: [['Zakat estimate (today)', 'Amount']], theme: 'striped', headStyles: { fillColor: [15, 23, 42] },
+                    body: [['2.5% of zakatable wealth above nisab, after debts', fmt(zakatDueINR, 'INR')], ['Same in AED', fmt(zakatDueINR / (state.data.settings.rate || 22.75))]] });
+                doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+                doc.text('Interest from NRE/NRO accounts appears under the income category you used for it. This pack is a summary, not tax advice.', 14, doc.lastAutoTable.finalY + 10);
+                doc.save(`FINZ_Year_Pack_${year}.pdf`);
+                actions.showToast(`Year-end pack for ${year} downloaded.`, 'success');
+            } catch (error) {
+                console.error('Year pack PDF error', error);
+                actions.showToast('Could not create the PDF: ' + error.message, 'error');
+            }
+            return pack;
+        };
+
+// ---- Monthly close (month is 0-based) ----
+actions.monthlyCloseText = function (summary, label) {
+            const aed = v => `AED ${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+            const lines = [`FINZ monthly close: ${label}`, '', `Earned income: ${aed(summary.income)}`, `Spending: ${aed(summary.spending)}`,
+                `Saved: ${aed(summary.saved)}${summary.savingsRate !== null ? ` (${summary.savingsRate}% of income)` : ''}`];
+            if (summary.netWorthChange !== null) lines.push(`Net worth change: ${summary.netWorthChange >= 0 ? '+' : ''}${aed(summary.netWorthChange)}`);
+            if (summary.categories.length) lines.push('', 'Top spending:', ...summary.categories.slice(0, 6).map(c => `- ${c.name}: ${aed(c.value)}`));
+            const dues = actions.upcomingDues(30);
+            if (dues.length) lines.push('', 'Due in the next 30 days:', ...dues.slice(0, 8).map(d => `- ${d.date}: ${d.name} ${d.amount} ${d.currency}`));
+            return lines.join('\n');
+        };
+
+// Payables, installments and card payments falling due within `days`.
+actions.upcomingDues = function (days = 30) {
+            const today = FinzCore.localDateKey(new Date()), until = FinzCore.localDateKey(new Date(Date.now() + days * 86400000));
+            const out = [];
+            for (const d of state.data.debts.filter(x => !x.settled)) {
+                if ((d.isBnpl || d.subtype === 'bnpl') && Array.isArray(d.schedule)) {
+                    for (const i of d.schedule.filter(x => !(x.paid || x.status === 'paid'))) {
+                        const day = FinzCore.localDateKey(FinzCore.parseLocalDate(i.date || i.dueDate) || i.date || i.dueDate);
+                        if (day && day <= until) out.push({ date: day, name: d.party, amount: i.amount, currency: d.currency });
+                    }
+                } else if (d.type === 'payable' && d.repaymentDate && d.repaymentDate <= until) out.push({ date: d.repaymentDate, name: d.party, amount: d.amount, currency: d.currency });
+            }
+            for (const card of actions.activeAccounts().filter(a => a.type === 'Credit Card' && a.dueDay && Number(a.balance) < 0)) {
+                const now = new Date(); const due = new Date(now.getFullYear(), now.getMonth(), Math.min(card.dueDay, 28));
+                if (FinzCore.localDateKey(due) < today) due.setMonth(due.getMonth() + 1);
+                if (FinzCore.localDateKey(due) <= until) out.push({ date: FinzCore.localDateKey(due), name: `${card.name} payment`, amount: (-Number(card.balance)).toFixed(2), currency: card.currency });
+            }
+            return out.sort((a, b) => a.date.localeCompare(b.date));
+        };
+
+actions.openMonthlyClose = function (year, month) {
+            if (year === undefined) { const prev = new Date(); prev.setDate(1); prev.setMonth(prev.getMonth() - 1); year = prev.getFullYear(); month = prev.getMonth(); }
+            const summary = FinzCore.monthlyClose(state.data, year, month);
+            const label = new Date(year, month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+            const text = actions.monthlyCloseText(summary, label);
+            const aed = v => actions.fmtMoney(Number(v) || 0, 'AED');
+            try { localStorage.setItem('finz_close_seen', summary.key); } catch (_) { /* storage unavailable */ }
+            document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
+            document.getElementById('modal-title').innerText = `Monthly Close: ${label}`;
+            const step = (dy, dm) => { const d = new Date(year, month + dm, 1); return () => actions.openMonthlyClose(d.getFullYear(), d.getMonth()); };
+            FinzUI.setHTML(document.getElementById('modal-content'), FinzUI.html`
+                <div class="max-w-2xl mx-auto space-y-6 text-left pb-10">
+                    <div class="flex justify-between items-center">
+                        <button data-finz-click="${FinzUI.handler(step(0, -1))}" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-[10px] font-black uppercase text-slate-300">← Previous</button>
+                        <button data-finz-click="${FinzUI.handler(step(0, 1))}" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-[10px] font-black uppercase text-slate-300">Next →</button>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700"><p class="text-[9px] font-black uppercase text-slate-400">Earned income</p><p class="text-lg font-black text-emerald-400 num-font">${aed(summary.income)}</p></div>
+                        <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700"><p class="text-[9px] font-black uppercase text-slate-400">Spending</p><p class="text-lg font-black text-rose-400 num-font">${aed(summary.spending)}</p></div>
+                        <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700"><p class="text-[9px] font-black uppercase text-slate-400">Saved</p><p class="text-lg font-black text-white num-font">${aed(summary.saved)}</p><p class="text-[9px] font-bold text-slate-400">${summary.savingsRate === null ? 'No income recorded' : `${summary.savingsRate}% of income`}</p></div>
+                        <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700"><p class="text-[9px] font-black uppercase text-slate-400">Net worth change</p><p class="text-lg font-black text-white num-font">${summary.netWorthChange === null ? '—' : FinzUI.html`${summary.netWorthChange >= 0 ? '+' : '-'}${aed(Math.abs(summary.netWorthChange))}`}</p></div>
+                    </div>
+                    <div class="bg-slate-800/80 p-5 rounded-2xl border border-slate-700">
+                        <p class="text-[10px] font-black uppercase text-slate-400 mb-3">Spending by category</p>
+                        ${summary.categories.length ? summary.categories.map(c => FinzUI.html`<div class="flex justify-between text-xs font-bold text-slate-200 py-1.5 border-b border-slate-700/50"><span>${c.name}</span><span class="num-font">${aed(c.value)}</span></div>`).join('') : FinzUI.html`<p class="text-xs text-slate-500">No spending recorded.</p>`}
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <a href="${`mailto:${encodeURIComponent(state.user?.email || '')}?subject=${encodeURIComponent(`FINZ monthly close: ${label}`)}&body=${encodeURIComponent(text)}`}" class="text-center p-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs">Email to me</a>
+                        <button data-finz-click="${FinzUI.handler(async function () { await navigator.clipboard.writeText(text); actions.showToast('Summary copied.', 'success'); })}" class="p-4 bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl font-black uppercase text-xs">Copy summary</button>
+                    </div>
+                    <p class="text-[10px] text-slate-500">"Email to me" opens a ready-to-send draft in your mail app. FINZ has no server, so it cannot send mail by itself.</p>
+                </div>`);
+            if (lucide.createIcons) lucide.createIcons();
         };
 
 actions.renderRemittance = function () {
@@ -784,11 +901,7 @@ actions.renderRemittance = function () {
                 // FOR NOW: We will assume any "Transfer Out" from AED account that mentions "Transfer" 
                 // and has a "Transfer In" to an INR account with same User Note is a match.
 
-                const matchIn = state.data.transactions.find(t2 =>
-                    t2.type === 'transfer_in' &&
-                    t2.note.includes(tx.note.split(':')[1]?.trim()) &&
-                    Math.abs(new Date(t2.date) - new Date(tx.date)) < 2000 // 2 seconds tolerance
-                );
+                const matchIn = actions.findTransferCounterpart(tx);
 
                 if (matchIn) {
                     const accIn = state.data.accounts.find(a => a.id === matchIn.accountId);
@@ -817,7 +930,13 @@ actions.renderRemittance = function () {
 
             const beatsMarket = parseFloat(avgRate) > marketRate;
 
+            const advice = FinzCore.remittanceAdvice(state.data);
             return FinzUI.html`<div class="max-w-xl mx-auto space-y-8">
+                    <div class="text-slate-900 bg-amber-50 border border-amber-200 p-5 rounded-[2rem] text-left">
+                        <p class="text-[10px] font-black uppercase text-amber-600 tracking-widest mb-1">Remittance planner</p>
+                        <p class="text-sm font-black text-slate-800">Today: 1 AED = ${advice.today.toFixed(2)} INR${advice.average ? FinzUI.html` • 90-day average ${advice.average} • best ${advice.best}` : ''}</p>
+                        <p class="text-xs font-bold text-slate-600 mt-1">${advice.verdict}</p>
+                    </div>
                 <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group text-center">
                     <div class="relative z-10">
                         <p class="text-[10px] uppercase font-black text-indigo-300 tracking-[0.3em] mb-4">Arbitrage Performance</p>
@@ -870,7 +989,7 @@ actions.renderRemitChart = function () {
             outTx.forEach(tx => {
                 const acc = state.data.accounts.find(a => a.id === tx.accountId);
                 if (!acc || acc.currency !== 'AED') return;
-                const matchIn = state.data.transactions.find(t2 => t2.type === 'transfer_in' && t2.note.includes(tx.note.split(':')[1]?.trim()) && Math.abs(new Date(t2.date) - new Date(tx.date)) < 2000);
+                const matchIn = actions.findTransferCounterpart(tx);
                 if (matchIn) {
                     const accIn = state.data.accounts.find(a => a.id === matchIn.accountId);
                     if (accIn && accIn.currency === 'INR') {
@@ -936,9 +1055,9 @@ actions.renderCharts = function () {
             let exp = 0;
             state.data.transactions.forEach(t => {
                 if (new Date(t.date) >= d) {
-                    const val = actions.toChartCur(Number(t.amount), t.currency || 'AED', r);
-                    if (t.type === 'income') inc += val;
-                    if (t.type === 'expense') exp += val;
+                    const val = actions.toChartCur(Number(t.amount), FinzCore.txCurrency(t, state.data.accounts), r);
+                    if (FinzCore.isEarnedIncome(t)) inc += val;
+                    if (FinzCore.isSpending(t)) exp += val;
                 }
             });
 

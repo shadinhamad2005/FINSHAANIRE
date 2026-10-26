@@ -1,4 +1,4 @@
-export function install({ state, actions }) {
+export function install({ state, actions, ui: FinzUI }) {
     actions.closeReminder = () => document.getElementById('reminder-overlay')?.classList.add('hidden');
     const phone = value => String(value || '').replace(/[^0-9]/g, '');
     actions.openWhatsAppReminder = async function (name, details, isRaw = false, netValue = 1) {
@@ -23,14 +23,26 @@ export function install({ state, actions }) {
         actions.showToast('Draft copied.', 'success');
     };
     actions.shareWhatsAppReminder = name => {
-        const amount = state.data.debts.filter(d => d.party === name && !d.settled).map(d => `${d.amount} ${d.currency}`).join(', ');
-        return actions.openWhatsAppReminder(name, amount);
+        const open = state.data.debts.filter(d => d.party === name && !d.settled);
+        const amount = open.map(d => `${d.amount} ${d.currency}`).join(', ');
+        // Use the "I will pay you" template when, overall, the user owes this person.
+        const rate = state.data.settings.rate || 22.75;
+        const net = open.reduce((sum, d) => sum + (d.type === 'payable' || d.isBnpl ? -1 : 1) * Number(d.amount) * (d.currency === 'INR' ? 1 / rate : 1), 0);
+        return actions.openWhatsAppReminder(name, amount, false, net < 0 ? -1 : 1);
     };
     actions.sendReminder = actions.shareWhatsAppReminder;
+    // Browsers allow one new window per click, so each person gets their own Send button.
     actions.bulkRemindOverdue = async () => {
-        const debts = state.data.debts.filter(d => !d.settled && d.type === 'receivable' && Date.parse(d.repaymentDate) < Date.now());
-        if (!confirm(`Send reminders for ${debts.length} overdue balances?`)) return;
-        for (const debt of debts) await actions.openWhatsAppReminder(debt.party, `${debt.amount} ${debt.currency}`);
-        actions.showToast('Reminders processed.', 'success');
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const debts = state.data.debts.filter(d => !d.settled && d.type === 'receivable' && Date.parse(d.repaymentDate) < today.getTime());
+        if (!debts.length) return actions.showToast('No overdue amounts owed to you.', 'info');
+        const people = new Map();
+        for (const d of debts) people.set(d.party, [...(people.get(d.party) || []), `${d.amount} ${d.currency}`]);
+        const rows = [...people].map(([name, amounts]) => FinzUI.html`
+            <div class="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border mb-2 text-left">
+                <div><p class="text-xs font-black text-slate-800">${name}</p><p class="text-[10px] font-bold text-slate-500">${amounts.join(', ')}</p></div>
+                <button data-finz-click="${FinzUI.handler(function () { this.textContent = 'Opened'; this.disabled = true; return actions.openWhatsAppReminder(name, amounts.join(', ')); })}" class="px-3 py-2 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase">WhatsApp</button>
+            </div>`).join('');
+        actions.showConfirm(`Overdue reminders (${people.size})`, FinzUI.html`<div class="max-h-[50vh] overflow-auto">${rows}</div>`, () => {}, 'Done');
     };
 }

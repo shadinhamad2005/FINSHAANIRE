@@ -16,27 +16,26 @@ const renderAssetsList = (...args) => actions.renderAssetsList(...args);
 const renderLedger = (...args) => actions.renderLedger(...args);
 
 actions.checkDueDebts = async function checkDueDebts() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = FinzCore.localDateKey(new Date());
             let dueItem = null;
             let dueType = 'standard'; // or 'bnpl'
             let dueIdx = -1;
             let dataChanged = false;
 
-            // Priority: Check Defaults first, then BNPL logic overrides or adds? 
-            // Let's just find the *first* due item.
+            // Find the first item that is due (a bad date on one record must not stop the check).
             for (const d of state.data.debts) {
                 if (d.settled) continue;
 
-
-
-                // 1. BNPL Schedule Check
-                if (d.subtype === 'bnpl' && d.schedule && d.schedule.length > 0) {
-                    const pending = d.schedule.find(s => s.status === 'pending');
-                    if (pending && new Date(pending.date).toISOString().split('T')[0] <= today) {
+                // 1. BNPL Schedule Check (older records may only carry isBnpl or dueDate)
+                if ((d.subtype === 'bnpl' || d.isBnpl) && Array.isArray(d.schedule) && d.schedule.length > 0) {
+                    const pendingIdx = d.schedule.findIndex(s => !(s.paid === true || s.status === 'paid'));
+                    const pending = d.schedule[pendingIdx];
+                    const pendingDay = pending ? FinzCore.localDateKey(FinzCore.parseLocalDate(pending.date || pending.dueDate) || pending.date || pending.dueDate) : '';
+                    if (pendingDay && pendingDay <= today) {
                         if (!dueItem) { // Only grab first for UI
                             dueItem = d;
                             dueType = 'bnpl';
-                            dueIdx = pending.index;
+                            dueIdx = pendingIdx;
                         }
                     }
                 }
@@ -61,7 +60,7 @@ actions.checkDueDebts = async function checkDueDebts() {
                     if (dueType === 'bnpl') {
                         const inst = dueItem.schedule[dueIdx];
                         amount = inst.amount;
-                        party = `${dueItem.party} (Inst #${inst.index + 1})`;
+                        party = `${dueItem.party} (Inst #${dueIdx + 1})`;
                         settleFn = () => actions.settleInstallment(dueItem.id, dueIdx);
                     }
 
@@ -601,7 +600,7 @@ actions.renderDebtUI = function () {
                                     <label class="text-slate-400 text-[9px] font-bold uppercase tracking-widest mb-1.5 block">Account Link</label>
                                     <select id="ds" class="w-full bg-slate-900/90 border border-slate-700 p-3 rounded-xl text-white font-bold text-xs outline-none focus:border-rose-500/50 transition-colors">
                                         <option value="" class="bg-slate-800 text-slate-400">-- No Account --</option>
-                                        ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}" class="bg-slate-800">${a.name}</option>`).join('')}
+                                        ${actions.activeAccounts().map(a => FinzUI.html`<option value="${a.id}" class="bg-slate-800">${a.name}</option>`).join('')}
                                     </select>
                                 </div>
 
@@ -1143,7 +1142,7 @@ actions.commitDebt = function () {
                 const now = new Date();
                 const last30 = new Date(); last30.setDate(now.getDate() - 30);
                 const burn = state.data.transactions
-                    .filter(t => t.type === 'expense' && new Date(t.date) > last30)
+                    .filter(t => FinzCore.isSpending(t) && new Date(t.date) > last30)
                     .reduce((s, t) => {
                         const acc = state.data.accounts.find(a => a.id === t.accountId);
                         const tCur = t.currency || (acc ? acc.currency : 'AED');
@@ -1189,7 +1188,7 @@ actions.finalizeCommitDebt = async function () {
                         else if (cur === 'AED' && acc.currency === 'INR') cost = amt * r;
                     }
 
-                    if (acc.balance < cost) {
+                    if (actions.availableToSpend(acc) < cost) {
                         actions.showToast(`Insufficient Funds in ${acc.name} (Need ${cost.toFixed(2)} ${acc.currency})`, "error");
                         actions.setBtnLoading('btn-commit-debt', false);
                         return;
@@ -1198,18 +1197,21 @@ actions.finalizeCommitDebt = async function () {
             }
 
             if (type === 'bnpl') {
-                const split = parseInt(document.getElementById('db-split').value) || 3;
+                const split = Math.min(60, Math.max(1, parseInt(document.getElementById('db-split').value) || 3));
                 const schedule = [];
-                const perMonth = amt / split;
-                const start = date ? new Date(date) : new Date();
+                // Split in whole fils; the last installment carries the remainder so the plan adds up exactly.
+                const totalCents = Math.round(amt * 100);
+                const baseCents = Math.floor(totalCents / split);
+                const start = FinzCore.parseLocalDate(date) || new Date();
 
                 for (let i = 0; i < split; i++) {
                     const d = new Date(start);
                     // 29-day logic as per user request (buffer)
                     d.setDate(d.getDate() + (29 * i));
+                    const cents = i === split - 1 ? totalCents - baseCents * (split - 1) : baseCents;
                     schedule.push({
-                        date: d.toISOString().split('T')[0],
-                        amount: perMonth.toFixed(2),
+                        date: FinzCore.localDateKey(d),
+                        amount: (cents / 100).toFixed(2),
                         paid: false
                     });
                 }
@@ -1294,7 +1296,7 @@ actions.openSettleFlow = function (id) {
                 <p class="text-[10px] font-black uppercase">Entity: ${d.party}</p>
                 <p class="text-3xl font-black">${d.amount} <span class="text-xs opacity-30">${d.currency}</span></p>
                 <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Enter Volume (${d.currency})</label><input type="number" id="samt" step="0.01" value="${d.amount}" class="w-full p-4 border rounded-xl font-black text-xl text-center outline-none"></div>
-                <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Select account</label><select id="sacc" class="text-slate-900 w-full p-4 border rounded-xl bg-white font-bold text-center">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(acc => FinzUI.html`<option value="${acc.id}">${acc.name} (${acc.currency})</option>`).join('')}</select></div>
+                <div class="text-left text-center"><label class="text-[10px] font-black uppercase block mb-1">Select account</label><select id="sacc" class="text-slate-900 w-full p-4 border rounded-xl bg-white font-bold text-center">${actions.cashAccounts().map(acc => FinzUI.html`<option value="${acc.id}">${acc.name} (${acc.currency})</option>`).join('')}</select></div>
                 <button id="btn-finalize-settle" data-finz-click="${FinzUI.handler(function(event) { return actions.finalizeSettle(((id))) })}" class="w-full bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase shadow-lg text-center text-center">Authorize Movement</button>
             </div> `);
             actions.closeReminder(); document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
@@ -1308,7 +1310,10 @@ actions.finalizeSettle = async function (id) {
             const d = state.data.debts[dIdx];
             const aIdx = state.data.accounts.findIndex(a => a.id === aId);
 
-            if (aIdx === -1 || isNaN(enteredAmt) || enteredAmt <= 0 || enteredAmt > d.amount) return;
+            if (!d) return;
+            if (aIdx === -1) return actions.showToast('Select an account.', 'error');
+            if (isNaN(enteredAmt) || enteredAmt <= 0) return actions.showToast('Enter an amount greater than zero.', 'error');
+            if (enteredAmt > Number(d.amount) + 0.001) return actions.showToast(`Amount cannot exceed the outstanding ${d.amount} ${d.currency}.`, 'error');
 
             const acc = state.data.accounts[aIdx];
             const rate = state.data.settings.rate;
@@ -1320,7 +1325,7 @@ actions.finalizeSettle = async function (id) {
             }
 
             // Balance Check
-            if (d.type !== 'receivable' && acc.balance < finalTxAmt) {
+            if (d.type !== 'receivable' && actions.availableToSpend(acc) < finalTxAmt) {
                 actions.showToast(`Insufficient Funds in ${acc.name}`, "error");
                 return;
             }
@@ -1386,6 +1391,7 @@ actions.finalizeSettle = async function (id) {
             if (newAmount <= 0.1) { // Threshold for float dust
                 state.data.debts[dIdx].amount = 0;
                 state.data.debts[dIdx].settled = true;
+                state.data.debts[dIdx].settledDate = new Date().toISOString(); // Used for on-time/late trust scoring
             } else {
                 state.data.debts[dIdx].amount = actions.toCurrency(newAmount);
             }
@@ -1406,10 +1412,21 @@ actions.openRescheduleFlow = function (id) {
         };
 
 actions.finalizeReschedule = async function (id) {
-            const dt = document.getElementById('new-date').value; if (!dt) return;
+            const dt = document.getElementById('new-date').value;
+            if (!FinzCore.parseLocalDate(dt)) return actions.showToast('Pick a new date.', 'error');
+            const debt = state.data.debts.find(i => i.id === id);
+            if (!debt) return;
             actions.setBtnLoading('btn-resched', true);
-            state.data.debts[state.data.debts.findIndex(i => i.id === id)].repaymentDate = dt;
-            await updateDb(); renderApp();
+            if ((debt.isBnpl || debt.subtype === 'bnpl') && Array.isArray(debt.schedule)) {
+                // Installment plans are driven by the schedule, so move the next unpaid installment itself.
+                const pending = debt.schedule.find(s => !(s.paid === true || s.status === 'paid'));
+                if (pending) { if (pending.dueDate && !pending.date) pending.dueDate = dt; else pending.date = dt; }
+            } else {
+                debt.rescheduledCount = (Number(debt.rescheduledCount) || 0) + 1; // Feeds the contact trust score
+            }
+            debt.repaymentDate = dt;
+            try { await updateDb(); } finally { actions.setBtnLoading('btn-resched', false); }
+            renderApp();
             FinzUI.setHTML(document.getElementById('modal-content'), FinzUI.html`<div class="flex flex-col items-center justify-center space-y-6 py-20 fade-in text-center text-center text-center"><div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-center"><i data-lucide="calendar-check" class="w-12 h-12"></i></div><h3 class="text-2xl font-black text-center text-center">Updated</h3><button data-finz-click="${FinzUI.handler(function(event) { return actions.closeModal() })}" class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold uppercase text-[10px] text-center">Done</button></div> `);
             lucide.createIcons();
         };
@@ -1426,13 +1443,13 @@ actions.openBnplSettleModal = function (id, idx) {
                     <div class="bg-indigo-50 p-4 rounded-xl text-center">
                         <p class="text-[10px] uppercase font-black text-indigo-400">Payment Amount</p>
                         <h3 class="text-3xl font-black text-indigo-600">${amt} <span class="text-xs text-indigo-400">${d.currency}</span></h3>
-                        <p class="text-[10px] font-bold text-indigo-400 mt-1">${d.party} • Installment ${idx + 1}/${d.installments}</p>
+                        <p class="text-[10px] font-bold text-indigo-400 mt-1">${d.party} • Installment ${idx + 1}/${d.installments || d.schedule.length}</p>
                     </div>
                     
                     <div>
                             <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Paid From</label>
                             <select id="bnpl-pay-acc" class="text-slate-900 w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-indigo-500">
-                                ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Wallet'].includes(a.type)).map(a =>
+                                ${actions.cashAccounts().map(a =>
                 FinzUI.html`<option value="${a.id}">${a.name} (${actions.toCurrency(a.balance)} ${a.currency})</option>`
             ).join('')}
                             </select>
@@ -1440,7 +1457,7 @@ actions.openBnplSettleModal = function (id, idx) {
 
                     <div>
                         <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Date Paid</label>
-                        <input type="date" id="bnpl-pay-date" value="${new Date().toISOString().split('T')[0]}" class="text-slate-900 w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-indigo-500">
+                        <input type="date" id="bnpl-pay-date" value="${FinzCore.localDateKey(new Date())}" class="text-slate-900 w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-indigo-500">
                     </div>
 
                         <div>
@@ -1461,17 +1478,13 @@ actions.openBnplSettleModal = function (id, idx) {
                 actions.recalculateBalances();
                 const finalAmt = Number(amt);
                 const baseAmt = FinzCore.convert(finalAmt, d.currency, acc.currency, state.data.settings.rate);
-                if (!(baseAmt > 0) || acc.balance < baseAmt) throw new Error('Insufficient Funds');
+                if (!(baseAmt > 0) || actions.availableToSpend(acc) < baseAmt) throw new Error('Insufficient Funds');
                 if (!dateVal || !Number.isFinite(Date.parse(dateVal))) throw new Error('Select a valid payment date.');
                 const transactionId = actions.genId();
 
-                // Date Logic: Use current time if selected date is Today (for Sorting Visibility)
-                const selDate = new Date(dateVal);
-                const today = new Date();
-                let finalDateIso = selDate.toISOString();
-                if (selDate.toDateString() === today.toDateString()) {
-                    finalDateIso = today.toISOString();
-                }
+                // Date Logic: today keeps the current time (for ordering); other days use local noon.
+                const finalDateIso = actions.entryDateFromInput(dateVal);
+                if (!finalDateIso) throw new Error('Select a valid payment date.');
 
                 // Note Logic: Append original amount if currency converted
                 let finalNote = note;
@@ -1483,7 +1496,8 @@ actions.openBnplSettleModal = function (id, idx) {
                 // The installment change and its debit are saved together.
                 // 3. Log Transaction (Handles State Push + DB Save + Recalc Balances)
                 // We save the amount in the ACCOUNT'S Check currency to ensure the Ledger subtracts correctly.
-                await actions.saveTransaction({
+                const undoInstallment = () => { if (!state.data.transactions.some(t => t.id === transactionId)) { inst.paid = false; inst.status = 'pending'; delete inst.paymentTransactionId; } };
+                try { await actions.saveTransaction({
                     id: transactionId,
                     installmentIndex: idx,
                     debtAmount: finalAmt,
@@ -1497,7 +1511,7 @@ actions.openBnplSettleModal = function (id, idx) {
                     date: finalDateIso,
                     debtId: d.id,
                     tags: ['#BNPL']
-                });
+                }); } catch (error) { undoInstallment(); throw error; }
 
                 // 4. UI Refresh
                 actions.renderApp();
@@ -1571,7 +1585,7 @@ actions.openPartialSettleModal = function(debtId) {
     const titleEl = document.getElementById('modal-title');
     if (titleEl) titleEl.innerText = 'Record Partial Repayment';
 
-    const accounts = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type));
+    const accounts = actions.cashAccounts();
 
     FinzUI.setHTML(c, FinzUI.html`
         <div class="max-w-lg mx-auto bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl text-left space-y-6 fade-in">
@@ -1605,7 +1619,7 @@ actions.openPartialSettleModal = function(debtId) {
 
                 <div>
                     <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">Payment Date</label>
-                    <input type="date" id="partial-pay-date" value="${new Date().toISOString().split('T')[0]}" class="w-full p-3.5 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold text-sm outline-none">
+                    <input type="date" id="partial-pay-date" value="${FinzCore.localDateKey(new Date())}" class="w-full p-3.5 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold text-sm outline-none">
                 </div>
             </div>
 
@@ -1623,7 +1637,7 @@ actions.commitPartialPayment = async function(debtId) {
 
     const amt = parseFloat(document.getElementById('partial-pay-amt')?.value) || 0;
     const accId = document.getElementById('partial-pay-acc')?.value;
-    const payDate = document.getElementById('partial-pay-date')?.value || new Date().toISOString();
+    const payDate = actions.entryDateFromInput(document.getElementById('partial-pay-date')?.value); // ISO, or null if invalid
 
     if (!Number.isFinite(amt) || amt <= 0) {
         actions.showToast("Please enter a valid payment amount", "error");
@@ -1656,7 +1670,7 @@ actions.commitPartialPayment = async function(debtId) {
     // Log the transaction
     const isReceivable = d.type === 'receivable';
     actions.recalculateBalances();
-    if (!acc || !Number.isFinite(Date.parse(payDate)) || (!isReceivable && acc.balance < finalTxAmt)) {
+    if (!acc || !payDate || (!isReceivable && actions.availableToSpend(acc) < finalTxAmt)) {
         actions.showToast('Select a valid payment account and date with sufficient funds.', 'error'); return;
     }
     state.data.transactions.push({
@@ -1667,7 +1681,7 @@ actions.commitPartialPayment = async function(debtId) {
         category: 'Debt Settlement',
         currency: acc ? acc.currency : d.currency,
         note: `Partial payment ${isReceivable ? 'from' : 'to'} ${d.party} (${amt} ${d.currency}) ${fxInfo.join(' ')}`,
-        date: new Date(payDate).toISOString(),
+        date: payDate,
         exchangeRate: rateSnapshot,
         debtId: d.id,
         debtAmount: amt
@@ -1678,7 +1692,7 @@ actions.commitPartialPayment = async function(debtId) {
     if (d.amount <= 0.01) {
         d.settled = true;
         d.amount = 0;
-        d.settledDate = new Date().toISOString();
+        d.settledDate = payDate;
     }
 
     actions.recalculateBalances();
@@ -1817,7 +1831,10 @@ actions.getPersonalCreditScore = function() {
     
     payables.forEach(d => {
         if (!d.settled) {
-            if (d.repaymentDate && d.repaymentDate !== 'N/A') {
+            // Installment plans are judged by their schedule; their repaymentDate is the
+            // original first due date and would count as overdue forever after it is paid.
+            const isPlan = (d.isBnpl || d.subtype === 'bnpl') && Array.isArray(d.schedule) && d.schedule.length > 0;
+            if (!isPlan && d.repaymentDate && d.repaymentDate !== 'N/A') {
                 const due = new Date(d.repaymentDate);
                 if (!isNaN(due.getTime()) && due < now) {
                     overduePayablesCount++;
@@ -1829,7 +1846,8 @@ actions.getPersonalCreditScore = function() {
                 d.schedule.forEach(s => {
                     if (!s.paid) {
                         const sDate = s.date || s.dueDate;
-                        if (sDate && new Date(sDate) < now) {
+                        // Due today is not overdue: compare whole local days.
+                        if (sDate && FinzCore.localDateKey(FinzCore.parseLocalDate(sDate) || sDate) < FinzCore.localDateKey(now)) {
                             overduePayablesCount++;
                             const diffDays = Math.ceil((now - new Date(sDate)) / (1000 * 60 * 60 * 24));
                             if (diffDays > maxOverdueDays) maxOverdueDays = diffDays;
@@ -1853,7 +1871,10 @@ actions.getPersonalCreditScore = function() {
 
     (state.data?.accounts || []).forEach(a => {
         const b = Number(a.balance) || 0;
-        totalAssetsAED += (a.currency === 'AED' ? b : b / r);
+        const aed = a.currency === 'AED' ? b : b / r;
+        // Card debt is a liability; it must not shrink assets instead.
+        if (a.type === 'Credit Card') { if (aed < 0) totalLiabilitiesAED += -aed; }
+        else totalAssetsAED += aed;
     });
 
     payables.forEach(d => {

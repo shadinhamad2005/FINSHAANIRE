@@ -37,3 +37,12 @@ Messaging uses manual WhatsApp drafts only. No messaging API, provider token, or
 Specify the intended Firebase project explicitly for any future deployment. No default deployment project is configured. Hosting publishes only `dist/`. Script CSP rejects inline JavaScript; inline styles remain permitted by the existing UI. The local PIN is a convenience lock, not encryption or a replacement for authentication.
 
 Segmented ledger JSON is access-controlled and size-limited by rules, but its contents are validated by the application rather than parsed by Firestore rules. Full server-side financial validation would require moving ledger writes behind a backend.
+
+## Household sharing (read-only) — deployment required
+
+Sharing works only after the updated `firestore.rules` are deployed (`firebase deploy --only firestore:rules --project <your project>`); until then the Sharing panel shows that it is unavailable. Run `pnpm test:rules` first. An owner lists up to 10 viewer sharing IDs (Firebase UIDs) in `finance/access`; viewers can read the ledger and its storage segments but never write. Remove a viewer in Settings → Tools to revoke access immediately.
+
+## Offline
+
+Production builds register `sw.js`, so the installed app opens without a connection. The ledger itself still loads from Firestore; offline you see the app shell, not your latest data.
+

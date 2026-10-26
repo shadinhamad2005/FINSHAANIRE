@@ -1,7 +1,7 @@
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
 import * as firebaseStore from 'firebase/firestore';
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { createIcons, icons } from 'lucide';
 import Chart from 'chart.js/auto';
 import { jsPDF } from 'jspdf';
@@ -18,7 +18,7 @@ applyPlugin(jsPDF);
 const sdk = __FINZ_TEST__ ? window.__firebase : { ...firebaseApp, ...firebaseAuth, ...firebaseStore };
 const app = sdk.initializeApp(deployment.firebase);
 if (!__FINZ_TEST__ && deployment.appCheckSiteKey) {
-    initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(deployment.appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+    initializeAppCheck(app, { provider: new ReCaptchaV3Provider(deployment.appCheckSiteKey), isTokenAutoRefreshEnabled: true });
 }
 const auth = sdk.getAuth(app), db = sdk.getFirestore(app);
 const state = { user: null, data: core.defaults() };
@@ -46,6 +46,10 @@ for (const [name, action] of Object.entries(actions)) {
     };
 }
 start(ctx);
+// Installable, offline-capable shell (production builds served over HTTPS only).
+if (!__FINZ_TEST__ && 'serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Offline mode unavailable:', error.message)));
+}
 document.addEventListener('finz-action-error', event => actions.showToast(event.detail, 'error'));
 if (__FINZ_TEST__) {
     Object.assign(window, actions, { state, FinzCore: core, FinzUI: ui });

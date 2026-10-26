@@ -15,7 +15,73 @@ const renderNotifications = (...args) => actions.renderNotifications(...args);
 const renderAssetsList = (...args) => actions.renderAssetsList(...args);
 const renderLedger = (...args) => actions.renderLedger(...args);
 
-actions.fetchMetalsRate = async function fetchMetalsRate() { return; };
+// Accounts still in use (archived ones keep their history and balance but leave every picker and list).
+actions.activeAccounts = () => state.data.accounts.filter(a => !a.archived);
+// Accounts money is paid from or into day to day: bank, cash, savings and credit cards.
+actions.cashAccounts = () => actions.activeAccounts().filter(a => ['Bank Account', 'Cash', 'Savings', 'Credit Card'].includes(a.type));
+actions.availableToSpend = account => FinzCore.availableToSpend(account);
+
+actions.archiveAccount = async function (id, archive = true) {
+            const acc = state.data.accounts.find(a => a.id === id);
+            if (!acc) return;
+            if (archive) {
+                const live = (state.data.subscriptions || []).filter(s => !s.paused && (s.accountId === id || s.targetAccountId === id));
+                if (live.length) return actions.showToast(`Pause or stop ${live.map(s => s.name).join(', ')} first; it still uses ${acc.name}.`, 'error');
+                acc.archived = true;
+            } else delete acc.archived;
+            await updateDb();
+            actions.closeModal();
+            actions.renderApp();
+            actions.showToast(archive ? `${acc.name} archived. Its history is kept; restore it from Settings.` : `${acc.name} restored.`, 'success');
+        };
+
+// Live gold/silver (USD per troy ounce from gold-api.com), cached for 6 hours on this device.
+// Prices stay in memory, so two devices never conflict over them.
+actions.liveMetals = null;
+actions.fetchMetalsRate = async function fetchMetalsRate() {
+            try {
+                let cached = null; try { cached = JSON.parse(localStorage.getItem('finz_metals') || 'null'); } catch (_) { cached = null; }
+                if (!cached || Date.now() - cached.t > 6 * 3600000) {
+                    const get = async symbol => { const res = await fetch(`https://api.gold-api.com/price/${symbol}`, { signal: AbortSignal.timeout(8000) }); const d = await res.json(); return Number(d.price); };
+                    const [gold, silver] = await Promise.all([get('XAU'), get('XAG')]);
+                    if (!(gold > 0) || !(silver > 0)) return;
+                    cached = { t: Date.now(), gold, silver };
+                    try { localStorage.setItem('finz_metals', JSON.stringify(cached)); } catch (_) { /* storage unavailable */ }
+                }
+                actions.liveMetals = { Gold: cached.gold, Silver: cached.silver, at: cached.t };
+                actions.renderApp();
+            } catch (error) { console.warn('Live metal prices unavailable:', error.message); }
+        };
+// Price per gram (account currency); live when available, else the rates saved in Settings. Gold uses the account's karat.
+actions.metalPerGram = function (metal, currency, karat = 24) {
+            const live = actions.liveMetals?.[metal];
+            if (live) return FinzCore.metalPricePerGram(live, metal === 'Gold' ? karat : 24, state.data.settings.rate)[currency];
+            const saved = currency === 'AED' ? state.data.commodityRatesAED?.[metal] : state.data.commodityRates?.[metal];
+            return saved ? Number(saved) * (metal === 'Gold' ? (Number(karat) || 24) / 24 : 1) : 0;
+        };
+// Market value of a gold/silver holding with a known weight, or null.
+actions.marketValue = function (account) {
+            const metal = account?.subtype;
+            if (!['Gold', 'Silver'].includes(metal) || !(Number(account.weight) > 0)) return null;
+            const perGram = actions.metalPerGram(metal, account.currency || 'AED', account.karat || 24);
+            return perGram > 0 ? FinzCore.money(Number(account.weight) * perGram) : null;
+        };
+// Books the difference between market value and the ledger balance as a Revaluation entry.
+actions.revalueToMarket = async function (id) {
+            const acc = state.data.accounts.find(a => a.id === id);
+            const market = actions.marketValue(acc);
+            if (market === null) return actions.showToast('Add the weight in grams to value this holding.', 'error');
+            actions.recalculateBalances();
+            const diff = FinzCore.money(market - Number(acc.balance));
+            if (Math.abs(diff) < 0.01) return actions.showToast('Already at market value.', 'info');
+            state.data.transactions.push({ id: actions.genId(), accountId: acc.id, type: diff > 0 ? 'income' : 'expense', amount: Math.abs(diff), currency: acc.currency,
+                category: 'Revaluation', note: `Market revaluation (${acc.weight}g${acc.karat ? ` ${acc.karat}K` : ''} ${acc.subtype})`, date: new Date().toISOString(), exchangeRate: state.data.settings.rate });
+            actions.recalculateBalances();
+            await updateDb();
+            actions.renderApp();
+            actions.viewAccountLedger(id);
+            actions.showToast(`${acc.name} revalued ${diff > 0 ? 'up' : 'down'} by ${acc.currency} ${Math.abs(diff).toLocaleString()}.`, 'success');
+        };
 
 actions.recalcDynamicAssets = function () { return; };
 
@@ -190,11 +256,65 @@ actions.renderAssetsList = function renderAssetsList(reg, items) {
             FinzUI.setHTML(container, FinzUI.html`<div class="space-y-3">${html}</div>`);
         };
 
+// Records both sides of a move between two of the user's accounts as ONE linked, atomic save.
+// `amount` is in `amountCurrency`; each side is booked in its own account's currency.
+actions.recordInternalTransfer = async function ({ fromId, toId, amount, amountCurrency, category, outNote, inNote }) {
+            const from = state.data.accounts.find(a => a.id === fromId);
+            const to = state.data.accounts.find(a => a.id === toId);
+            const value = Number(amount);
+            if (!from || !to || from.id === to.id) throw new Error('Select two different accounts.');
+            if (!Number.isFinite(value) || value <= 0) throw new Error('Enter an amount greater than zero.');
+            const rate = state.data.settings.rate;
+            const outAmount = actions.toCurrency(FinzCore.convert(value, amountCurrency, from.currency, rate));
+            const inAmount = actions.toCurrency(FinzCore.convert(value, amountCurrency, to.currency, rate));
+            actions.recalculateBalances();
+            if (actions.availableToSpend(from) < outAmount) throw new Error(`Insufficient funds in ${from.name} (needs ${from.currency} ${outAmount.toLocaleString()}).`);
+            const transferGroupId = actions.genId(), date = new Date().toISOString();
+            state.data.transactions.push(
+                { id: actions.genId(), transferGroupId, accountId: from.id, type: 'transfer_out', amount: outAmount, currency: from.currency, category, note: outNote, date, exchangeRate: rate, transferTo: to.id },
+                { id: actions.genId(), transferGroupId, accountId: to.id, type: 'transfer_in', amount: inAmount, currency: to.currency, category, note: inNote, date, exchangeRate: rate, transferFrom: from.id }
+            );
+            actions.recalculateBalances();
+            await updateDb();
+            return { from, to, outAmount, inAmount };
+        };
+
+actions.isAccountInternalTx = function (t) {
+            if (!t || t.transferGroupId || t.debtId) return false;
+            const cat = String(t.category || '').trim().toLowerCase();
+            const note = String(t.note || '').trim().toLowerCase();
+            const hasInitTag = Array.isArray(t.tags) && t.tags.some(tag => String(tag).toLowerCase().includes('init'));
+            return cat === 'opening balance' || cat === 'revaluation' || cat === 'initial balance' || note === 'initial balance' || hasInitTag;
+        };
+
+// Anything still pointing at an account would be orphaned (and break backup restore), so deletion is blocked until it is cleared.
+actions.accountDeletionBlockers = function (id) {
+            const reasons = [];
+            // The account's own opening balance and internal revaluations are removed together with it.
+            const txCount = state.data.transactions.filter(t => t.accountId === id && !actions.isAccountInternalTx(t)).length;
+            if (txCount) reasons.push(`${txCount} transaction${txCount === 1 ? '' : 's'}`);
+            const subs = (state.data.subscriptions || []).filter(s => s.accountId === id || s.targetAccountId === id).length;
+            if (subs) reasons.push(`${subs} recurring auto-pay schedule${subs === 1 ? '' : 's'}`);
+            return reasons;
+        };
+
 actions.delAccount = async function (id) {
-            actions.showConfirm("Permanently wipe?", "This will delete the account and cannot be undone.", async () => {
-                state.data.accounts = state.data.accounts.filter(x => x.id !== id);
+            const acc = state.data.accounts.find(a => a.id === id);
+            const name = acc ? acc.name : 'this asset';
+            const blockers = actions.accountDeletionBlockers(id);
+            if (blockers.length) {
+                return actions.showToast(`${name} still has ${blockers.join(' and ')}. Delete or move them first, so your history and balances stay correct.`, 'error');
+            }
+            actions.showConfirm("Permanently wipe?", `This will delete "${name}" and cannot be undone.`, async () => {
+                state.data.transactions = (state.data.transactions || []).filter(t => t.accountId !== id);
+                state.data.accounts = (state.data.accounts || []).filter(x => x.id !== id);
+                if (state.data.settings?.emfAccountId === id) delete state.data.settings.emfAccountId;
+                for (const g of state.data.goals || []) if (g.accountId === id) delete g.accountId;
+                actions.recalculateBalances();
                 await updateDb();
                 actions.closeModal();
+                actions.renderApp();
+                actions.showToast(`Deleted ${name}`, 'success');
             });
         };
 
@@ -208,17 +328,13 @@ actions.calcCommodityBalance = function () {
             const weight = parseFloat(document.getElementById('aw')?.value) || 0;
             const hintEl = document.getElementById('commodity-rate-hint');
             
-            // Get Rate per gram
-            let rate = 0;
-            if (currency === 'AED') {
-                rate = (state.data.commodityRatesAED && state.data.commodityRatesAED[metal]) ? state.data.commodityRatesAED[metal] : (metal === 'Gold' ? 315 : (metal === 'Silver' ? 3.5 : 0));
-            } else {
-                rate = (state.data.commodityRates && state.data.commodityRates[metal]) ? state.data.commodityRates[metal] : (metal === 'Gold' ? 7200 : (metal === 'Silver' ? 90 : 0));
-            }
+            // Rate per gram: live price when available (purity applied for gold), else the saved rate
+            const karat = Number(document.getElementById('commodity-karat')?.value) || 24;
+            let rate = ['Gold', 'Silver'].includes(metal) ? FinzCore.money(actions.metalPerGram(metal, currency, karat)) : 0;
 
             if (hintEl) {
                 if (rate > 0) {
-                    hintEl.innerText = `Current rate: ${currency} ${rate}/g${weight > 0 ? ` • Est. Value: ${currency} ${(rate * weight).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}`;
+                    hintEl.innerText = `${actions.liveMetals ? 'Live' : 'Saved'} rate: ${currency} ${rate}/g${weight > 0 ? ` • Est. Value: ${currency} ${(rate * weight).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}`;
                 } else {
                     hintEl.innerText = '';
                 }
@@ -241,7 +357,7 @@ actions.toggleAssetFields = function () {
             if (invContainer) invContainer.classList.toggle('hidden', !isInv);
 
             // Hide All Dynamic First
-            ['inp-commodity', 'inp-fund', 'inp-re', 'inp-crypto', 'inp-bond', 'inp-emf'].forEach(id => {
+            ['inp-commodity', 'inp-fund', 'inp-re', 'inp-crypto', 'inp-bond', 'inp-emf', 'inp-card'].forEach(id => {
                 document.getElementById(id)?.classList.add('hidden');
             });
 
@@ -251,7 +367,12 @@ actions.toggleAssetFields = function () {
             const balDiv = document.getElementById('inp-balance');
             if (balDiv) balDiv.classList.remove('hidden'); // ALWAYS visible for all account types!
 
-            if (type === 'Real Estate') {
+            if (type === 'Credit Card') {
+                document.getElementById('inp-card')?.classList.remove('hidden');
+                if (lblBal) lblBal.innerText = 'Amount Currently Owed';
+                if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Outstanding balance on the card today (0 if fully paid)'; }
+            }
+            else if (type === 'Real Estate') {
                 document.getElementById('inp-re')?.classList.remove('hidden');
                 if (lblBal) lblBal.innerText = 'Property Valuation';
                 if (noteBal) { noteBal.classList.remove('hidden'); noteBal.innerText = 'Enter total estimated property market value'; }
@@ -329,6 +450,18 @@ actions.saveAccount = async function () {
                 actions.showToast("Please enter an asset identifier/name", "error");
                 return;
             }
+            // Credit cards: a limit is required; the opening figure is what is owed, booked as a negative balance.
+            let card = null;
+            if (t === 'Credit Card') {
+                const limit = parseFloat(document.getElementById('card-limit')?.value);
+                const statementDay = parseInt(document.getElementById('card-statement')?.value);
+                const dueDay = parseInt(document.getElementById('card-due')?.value);
+                const validDay = d => !Number.isFinite(d) || (Number.isInteger(d) && d >= 1 && d <= 31);
+                if (!(limit > 0)) return actions.showToast('Enter the card\'s credit limit.', 'error');
+                if (!validDay(statementDay) || !validDay(dueDay)) return actions.showToast('Statement and due days must be between 1 and 31.', 'error');
+                if (bal < 0 || bal > limit) return actions.showToast('Amount owed must be between 0 and the credit limit.', 'error');
+                card = { creditLimit: limit, ...(Number.isFinite(statementDay) ? { statementDay } : {}), ...(Number.isFinite(dueDay) ? { dueDay } : {}) };
+            }
             actions.setBtnLoading('btn-save-acc', true);
 
             const newAcc = {
@@ -344,6 +477,7 @@ actions.saveAccount = async function () {
                 category: category,
                 details: { location, area, ...vehicle, ...crypto, ...collectible }
             };
+            if (card) { Object.assign(newAcc, card); delete newAcc.weight; delete newAcc.units; delete newAcc.details; }
             if (t === 'Emergency Fund' && !isNaN(emfTarget) && emfTarget !== null) {
                 newAcc.target = emfTarget;
                 if (!state.data.settings) state.data.settings = {};
@@ -352,6 +486,7 @@ actions.saveAccount = async function () {
 
             if (t === 'Commodity') {
                 newAcc.subtype = document.getElementById('commodity-type')?.value || 'Gold';
+                if (newAcc.subtype === 'Gold') newAcc.karat = Number(document.getElementById('commodity-karat')?.value) || 24;
             } else if (t === 'Mutual Fund') {
                 newAcc.category = document.getElementById('mf-cat')?.value || 'Equity';
             }
@@ -361,7 +496,7 @@ actions.saveAccount = async function () {
                 state.data.transactions.push({
                     id: actions.genId(),
                     accountId: newAcc.id,
-                    amount: actions.toCurrency(bal),
+                    amount: actions.toCurrency(card ? -bal : bal), // A card's opening debt is a negative balance
                     type: 'income',
                     category: 'Opening Balance',
                     note: 'Initial Balance',
@@ -401,7 +536,7 @@ actions.viewAccountLedger = function (id) {
 
             // --- METRICS CALCULATION ---
             const r = state.data.settings.rate;
-            const isInv = !['Bank Account', 'Cash', 'Savings'].includes(a.type);
+            const isInv = !['Bank Account', 'Cash', 'Savings', 'Credit Card'].includes(a.type);
 
             // 1. Current Value (in INR for uniform display, or native?)
             // Let's show Native + INR equivalent
@@ -455,8 +590,10 @@ actions.viewAccountLedger = function (id) {
                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.quickLiquidate(((id))) })}" class="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-200 transition-all">- Liquidate</button>
                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openModal('subscriptions') })}" class="w-full py-4 bg-indigo-500 text-white rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-indigo-600 transition-all shadow-md"><i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1"></i> Auto-SIP</button>
                       </div>` : ''}
-                      <div class="flex justify-center space-x-4">
+                      <div class="flex flex-wrap justify-center gap-3">
                          ${isInv ? FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { return actions.editOriginalCost(((id))) })}" class="px-6 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">Set Initial Investment</button>` : ''}
+                         ${actions.marketValue(a) !== null ? FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { return actions.revalueToMarket(id) })}" class="px-6 py-3 bg-amber-50 text-amber-700 rounded-xl font-bold text-xs uppercase hover:bg-amber-100 transition-all">Revalue to market (${a.currency} ${actions.marketValue(a).toLocaleString()})</button>` : ''}
+                         <button data-finz-click="${FinzUI.handler(function(event) { return actions.archiveAccount(id, !a.archived) })}" class="px-6 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-xs uppercase hover:bg-slate-200 transition-all">${a.archived ? 'Restore' : 'Archive'}</button>
                          <button data-finz-click="${FinzUI.handler(function(event) { return actions.delAccount(((id))) })}" class="px-6 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-xs uppercase hover:bg-red-100 transition-all">Delete Asset</button>
                     </div>
 
@@ -472,13 +609,19 @@ actions.viewAccountLedger = function (id) {
                                             <p class="font-black text-sm text-slate-100 truncate">${t.category || 'Transfer'}</p>
                                             <p class="text-[9px] font-bold text-slate-500 uppercase mt-0.5 truncate">${new Date(t.date).toLocaleDateString()} — ${t.note || '-'}</p>
                                         </div>
-                                        <p class="font-black text-sm ${color} whitespace-nowrap">${sign}${Number(t.amount).toLocaleString()}</p>
+                                        <div class="flex items-center gap-3">
+                                            <p class="font-black text-sm ${color} whitespace-nowrap">${sign}${Number(t.amount).toLocaleString()}</p>
+                                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return (actions.deleteTransaction || actions.confirmDeleteTransaction)(((t.id))) })}" class="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-all" title="Delete entry">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
+                                        </div>
                                     </div>`;
                         }).join('') || FinzUI.literal("<div class=\"p-8 text-center border border-dashed border-slate-700/50 rounded-3xl text-slate-500 text-xs font-bold uppercase tracking-widest mt-4\">No transactions recorded</div>")}
                     </div>
                 </div> `);
 
             document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
+            lucide.createIcons();
         };
 
 actions.setOriginalCost = async function () {
@@ -567,7 +710,7 @@ actions.quickInvest = function(accId) {
                     <div>
                         <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Paid From</label>
                         <select id="quick-inv-source" class="text-slate-900 w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-emerald-500">
-                            ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a =>
+                            ${actions.cashAccounts().map(a =>
                                 FinzUI.html`<option value="${a.id}">${a.name} (${actions.toCurrency(a.balance)} ${a.currency})</option>`
                             ).join('')}
                         </select>
@@ -579,41 +722,17 @@ actions.quickInvest = function(accId) {
                 if (!amt || amt <= 0 || !sId) return actions.showToast("Invalid Amount", "error");
                 
                 const sAcc = state.data.accounts.find(a => a.id === sId);
-                const tIdx = state.data.accounts.findIndex(a => a.id === accId);
-                if (!sAcc || tIdx === -1) return;
+                if (!sAcc) return;
 
-                // Create Expense on Source
-                await actions.saveTransaction({
-                    id: actions.genId(),
-                    accountId: sAcc.id,
-                    type: 'transfer_out',
-                    amount: amt,
-                    currency: acc.currency, // Input is in dest currency
-                    category: 'Investment',
-                    note: `Transfer to ${acc.name}`,
-                    date: new Date().toISOString(),
-                    transferTo: acc.id
+                // The amount is entered in the investment's currency; the source is debited the converted amount.
+                const { outAmount } = await actions.recordInternalTransfer({
+                    fromId: sAcc.id, toId: acc.id, amount: amt, amountCurrency: acc.currency, category: 'Investment',
+                    outNote: `Transfer to ${acc.name}`, inNote: `Transfer from ${sAcc.name}`
                 });
-
-                // Create Income on Dest
-                await actions.saveTransaction({
-                    id: actions.genId(),
-                    accountId: acc.id,
-                    type: 'transfer_in',
-                    amount: amt,
-                    currency: acc.currency,
-                    category: 'Investment',
-                    note: `Transfer from ${sAcc.name}`,
-                    date: new Date().toISOString(),
-                    transferFrom: sAcc.id
-                });
-
-                // Note: originalCost is strictly for the manual 'Initial Investment' opening balance now.
-                // The ledger will automatically sum this 'transfer_in' during recalculateBalances.
 
                 actions.renderApp();
                 actions.viewAccountLedger(acc.id);
-                actions.showToast("Investment Recorded Successfully", "success");
+                actions.showToast(`Investment recorded (${sAcc.currency} ${outAmount.toLocaleString()} debited).`, "success");
             }, "Confirm Investment");
         };
 
@@ -631,7 +750,7 @@ actions.quickLiquidate = function(accId) {
                     <div>
                         <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Deposit To</label>
                         <select id="quick-liq-dest" class="text-slate-900 w-full p-3 bg-slate-50 border rounded-xl font-bold text-xs outline-none focus:border-indigo-500">
-                            ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a =>
+                            ${actions.cashAccounts().map(a =>
                                 FinzUI.html`<option value="${a.id}">${a.name} (${actions.toCurrency(a.balance)} ${a.currency})</option>`
                             ).join('')}
                         </select>
@@ -643,41 +762,17 @@ actions.quickLiquidate = function(accId) {
                 if (!amt || amt <= 0 || !tId) return actions.showToast("Invalid Amount", "error");
                 
                 const tAcc = state.data.accounts.find(a => a.id === tId);
-                const sIdx = state.data.accounts.findIndex(a => a.id === accId);
-                if (!tAcc || sIdx === -1) return;
+                if (!tAcc) return;
 
-                // Create Expense on Source (Asset)
-                await actions.saveTransaction({
-                    id: actions.genId(),
-                    accountId: acc.id,
-                    type: 'transfer_out',
-                    amount: amt,
-                    currency: acc.currency,
-                    category: 'Liquidation',
-                    note: `Withdrawal to ${tAcc.name}`,
-                    date: new Date().toISOString(),
-                    transferTo: tAcc.id
+                // The amount is in the asset's currency; the bank is credited the converted amount.
+                const { inAmount } = await actions.recordInternalTransfer({
+                    fromId: acc.id, toId: tAcc.id, amount: amt, amountCurrency: acc.currency, category: 'Liquidation',
+                    outNote: `Withdrawal to ${tAcc.name}`, inNote: `Liquidation from ${acc.name}`
                 });
-
-                // Create Income on Dest (Bank)
-                await actions.saveTransaction({
-                    id: actions.genId(),
-                    accountId: tAcc.id,
-                    type: 'transfer_in',
-                    amount: amt,
-                    currency: acc.currency, // Sent in Asset's currency, auto-converted by ledger logic if Bank is different
-                    category: 'Liquidation',
-                    note: `Liquidation from ${acc.name}`,
-                    date: new Date().toISOString(),
-                    transferFrom: acc.id
-                });
-
-                // Note: originalCost is strictly for the manual 'Initial Investment' opening balance now.
-                // The ledger will automatically sum this 'transfer_out' during recalculateBalances.
 
                 actions.renderApp();
                 actions.viewAccountLedger(acc.id);
-                actions.showToast("Liquidation Recorded Successfully", "success");
+                actions.showToast(`Liquidation recorded (${tAcc.currency} ${inAmount.toLocaleString()} credited).`, "success");
             }, "Confirm Liquidation");
         };
 
@@ -706,22 +801,9 @@ actions.getMetalsInvestedStats = function () {
 
 actions.openEmergencyFundWizard = function () {
     // Auto-calculate monthly burn
-    const r = state.data.settings?.rate || 22.75;
-    const now = new Date();
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(now.getDate() - 90);
-
-    const recentExp = (state.data.transactions || []).filter(t =>
-        ['expense', 'transfer_out'].includes(t.type) && new Date(t.date) >= ninetyDaysAgo
-    );
-
-    let totalExpAED = 0;
-    recentExp.forEach(t => {
-        const acc = state.data.accounts.find(a => a.id === t.accountId);
-        const cur = acc ? acc.currency : 'AED';
-        totalExpAED += cur === 'AED' ? Number(t.amount) : Number(t.amount) / r;
-    });
-    const monthlyBurn = recentExp.length > 0 ? totalExpAED / 3 : (state.data.settings?.expectedSalary || 5000) * 0.7;
+    // Real spending only (transfers between own accounts are not "burn"), averaged over the history that exists.
+    const measuredBurn = FinzCore.monthlyBurn(state.data);
+    const monthlyBurn = measuredBurn > 0 ? measuredBurn : (state.data.settings?.expectedSalary || 5000) * 0.7;
     const salary = state.data.settings?.expectedSalary || 0;
 
     const c = document.getElementById('modal-content');
@@ -864,20 +946,30 @@ actions.saveEmergencyFund = async function () {
     const customTarget = parseFloat(document.getElementById('emf-custom-target')?.value);
     const months = actions._emfSelectedMonths || 6;
     const burn = actions._emfMonthlyBurn || 0;
-    const target = customTarget > 0 ? customTarget : (burn * months);
+    // The calculated target is in AED; a custom target is typed in the fund's own currency.
+    const target = customTarget > 0 ? customTarget : FinzCore.convert(burn * months, 'AED', currency, state.data.settings.rate);
+    if (initialBalance < 0) return actions.showToast('Current balance cannot be negative.', 'error');
 
-    // Create the account
+    // Create the account. Its balance comes from the ledger, so the starting amount is an Opening Balance entry.
     const newAcc = {
-        id: 'acc_' + Date.now(),
+        id: actions.genId(),
         name: name,
         type: 'Emergency Fund',
         currency: currency,
-        balance: initialBalance,
+        balance: 0,
+        target,
         createdAt: new Date().toISOString()
     };
 
     if (!state.data.accounts) state.data.accounts = [];
     state.data.accounts.push(newAcc);
+    if (initialBalance > 0) {
+        state.data.transactions.push({
+            id: actions.genId(), accountId: newAcc.id, amount: actions.toCurrency(initialBalance), type: 'income',
+            category: 'Opening Balance', note: 'Initial Balance', tags: ['#init'], currency,
+            date: new Date().toISOString(), exchangeRate: state.data.settings.rate
+        });
+    }
 
     // Store target in settings
     if (!state.data.settings) state.data.settings = {};
@@ -886,11 +978,12 @@ actions.saveEmergencyFund = async function () {
     state.data.settings.emfMonthlyBurn = burn;
     state.data.settings.emfAccountId = newAcc.id;
 
+    actions.recalculateBalances();
     await actions.updateDb();
     actions.recalculateBalances();
     actions.renderApp();
     actions.closeModal();
-    actions.showToast(`Emergency Fund created! Target: AED ${target.toLocaleString(undefined, {maximumFractionDigits: 0})}`, 'success');
+    actions.showToast(`Emergency Fund created! Target: ${currency} ${target.toLocaleString(undefined, {maximumFractionDigits: 0})}`, 'success');
 
     // Auto-open the dashboard
     setTimeout(() => actions.openEmergencyFundDashboard(), 300);
@@ -920,7 +1013,11 @@ actions.openEmergencyFundDashboard = function (accId) {
     const burn = state.data.settings?.emfMonthlyBurn || 0;
     const progress = Math.min(100, (balance / target) * 100);
     const shortfall = Math.max(0, target - balance);
-    const monthsToComplete = burn > 0 && shortfall > 0 ? (shortfall / (burn * 0.2)).toFixed(1) : '0';
+    // Estimate from the user's actual net top-ups over the last 3 months (not an assumed saving rate).
+    const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const recentTopUps = (state.data.transactions || []).filter(t => t.accountId === emfAcc.id && t.category !== 'Opening Balance' && new Date(t.date) >= threeMonthsAgo)
+        .reduce((sum, t) => sum + (['income', 'transfer_in'].includes(t.type) ? 1 : -1) * Number(t.amount), 0) / 3;
+    const monthsToComplete = shortfall <= 0 ? '0' : recentTopUps > 0 ? (shortfall / recentTopUps).toFixed(1) : '—';
     const r = state.data.settings?.rate || 22.75;
 
     const b = document.getElementById('modal-backdrop');
@@ -982,7 +1079,7 @@ actions.openEmergencyFundDashboard = function (accId) {
             <div class="bg-slate-800/90 rounded-[2rem] p-5 border border-slate-700/80 text-center">
                 <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Shortfall</p>
                 <p class="text-lg font-black ${shortfall > 0 ? 'text-rose-400' : 'text-emerald-400'} num-font">${shortfall > 0 ? actions.fmtMoney(shortfall, currency) : 'Fully Funded!'}</p>
-                ${shortfall > 0 ? FinzUI.html`<p class="text-[9px] font-bold text-slate-400">~${monthsToComplete} months to complete</p>` : ''}
+                ${shortfall > 0 ? FinzUI.html`<p class="text-[9px] font-bold text-slate-400">${monthsToComplete === '—' ? 'No top-ups in the last 3 months' : `~${monthsToComplete} months at your recent pace`}</p>` : ''}
             </div>
         </div>
 
@@ -1063,16 +1160,19 @@ actions.editEmfTarget = async function (id) {
 actions.deleteEmfAccount = async function (id) {
     const acc = state.data.accounts.find(a => a.id === id);
     const name = acc ? acc.name : 'this Emergency Fund';
+    const blockers = actions.accountDeletionBlockers(id);
+    if (blockers.length) return actions.showToast(`${name} still has ${blockers.join(' and ')}. Move the money out or delete those entries first.`, 'error');
     if (!confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`)) return;
-    
+
     state.data.accounts = (state.data.accounts || []).filter(a => a.id !== id);
     state.data.transactions = (state.data.transactions || []).filter(t => t.accountId !== id);
     if (state.data.settings?.emfAccountId === id) {
         delete state.data.settings.emfAccountId;
     }
+    for (const g of state.data.goals || []) if (g.accountId === id) delete g.accountId;
+    actions.recalculateBalances();
     await actions.updateDb();
     actions.closeModal();
-    actions.recalculateBalances();
     actions.renderApp();
     actions.showToast(`Deleted ${name}`, "success");
 };

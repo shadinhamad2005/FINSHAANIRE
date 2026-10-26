@@ -23,7 +23,7 @@ actions.getTransactionBaseAmount = function (t) {
             const acc = (typeof state !== 'undefined' && state.data?.accounts) ? state.data.accounts.find(a => a.id === t.accountId) : null;
             const cur = t.currency || (acc ? acc.currency : baseCur);
             if (cur === baseCur) return amt;
-            const rate = parseFloat(t.exchangeRate) || parseFloat(state.data?.settings?.rate) || 22.75;
+            const rate = FinzCore.aedInrRate(parseFloat(t.exchangeRate) || parseFloat(state.data?.settings?.rate) || 22.75);
             if (baseCur === 'AED' && cur === 'INR') {
                 return rate > 0 ? (amt / rate) : amt;
             } else if (baseCur === 'INR' && cur === 'AED') {
@@ -59,19 +59,17 @@ actions.filterLedger = function () {
                 }
                 else if (filter === 'expense') matchesFilter = (t.type === 'expense' || t.type === 'transfer_out');
                 else if (filter === 'transfer') matchesFilter = t.type.includes('transfer');
-                else if (filter === 'high') matchesFilter = parseFloat(t.amount) > 5000;
+                else if (filter === 'high') matchesFilter = actions.getTransactionBaseAmount(t) > 5000;
 
-                // 3. Check Date Range Filter
-                const dFrom = document.getElementById('ledger-date-from')?.value;
-                const dTo = document.getElementById('ledger-date-to')?.value;
+                // 3. Check Date Range Filter (date inputs are local calendar days)
+                const dFrom = FinzCore.parseLocalDate(document.getElementById('ledger-date-from')?.value);
+                const dTo = FinzCore.parseLocalDate(document.getElementById('ledger-date-to')?.value);
 
                 let matchesDate = true;
-                if (dFrom) matchesDate = matchesDate && (new Date(t.date) >= new Date(dFrom));
+                if (dFrom) matchesDate = matchesDate && (new Date(t.date) >= dFrom);
                 if (dTo) {
-                    // Adjust to end of day for intuitive filtering
-                    const endDate = new Date(dTo);
-                    endDate.setHours(23, 59, 59, 999);
-                    matchesDate = matchesDate && (new Date(t.date) <= endDate);
+                    dTo.setHours(23, 59, 59, 999);
+                    matchesDate = matchesDate && (new Date(t.date) <= dTo);
                 }
 
                 return matchesSearch && matchesFilter && matchesDate;
@@ -88,14 +86,22 @@ actions.renderImportUI = function () {
                     <ul class="text-[10px] text-slate-400 list-disc list-inside mb-4">
                         <li>Paste your statement below.</li>
                         <li>Format: <strong>Date, Description, Amount</strong> (e.g. 2024-02-01, Netflix, -50)</li>
-                        <li>Positive for Income, Negative for Expense</li>
+                        <li>Positive for Income, Negative for Expense. Quote descriptions that contain commas.</li>
+                        <li>Rows already imported (same date, description and amount) are skipped.</li>
                     </ul>
                     <textarea id="csv-input" class="text-slate-900 w-full h-40 p-4 border rounded-2xl bg-slate-50 text-xs font-mono outline-none focus:border-emerald-500" placeholder="2024-02-01, Salary, 5000\n2024-02-02, Grocery, -200"></textarea>
                 </div>
                 
                 <select id="csv-acc" class="text-slate-900 w-full p-4 border rounded-xl font-bold text-sm mb-4 bg-white">
-                    ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
+                    ${actions.activeAccounts().map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
                 </select>
+
+                <div class="mb-6 text-left">
+                    <p class="text-[10px] text-slate-500 font-bold mb-2">Or paste bank SMS / app notifications (one per line):</p>
+                    <textarea id="sms-input" class="text-slate-900 w-full h-28 p-4 border rounded-2xl bg-slate-50 text-xs outline-none focus:border-emerald-500" placeholder="AED 120.50 was spent on your card ending 1234 at CARREFOUR on 21/10/2026"></textarea>
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.parseSMS() })}" class="mt-2 w-full bg-slate-100 text-slate-600 p-3 rounded-xl font-black uppercase text-[10px]">Read SMS</button>
+                    <p class="text-[9px] text-slate-400 mt-1">OTP messages are ignored. Amounts in the other currency are converted at today's rate.</p>
+                </div>
 
                 <div id="csv-preview" class="hidden mb-6 max-h-40 overflow-auto border rounded-xl"></div>
 
@@ -106,70 +112,114 @@ actions.renderImportUI = function () {
             </div>`;
         };
 
+// Accepts YYYY-MM-DD and the UAE/India day-first formats DD/MM/YYYY and DD-MM-YYYY.
+const parseImportDate = text => {
+    const value = String(text || '').trim();
+    const dayFirst = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
+    const date = dayFirst ? FinzCore.parseLocalDate(`${dayFirst[3]}-${dayFirst[2].padStart(2, '0')}-${dayFirst[1].padStart(2, '0')}`) : FinzCore.parseLocalDate(value);
+    if (date) date.setHours(12, 0, 0, 0);
+    return date;
+};
+
+actions.parsedRows = [];
+
 actions.parseCSV = function () {
             const raw = document.getElementById('csv-input').value;
             const rows = raw.split(/\r?\n/).filter(r => r.trim() !== '');
             actions.parsedRows = [];
+            const rejected = [];
 
-            rows.forEach(r => {
-                const parts = r.split(',').map(p => p.trim());
-                if (parts.length >= 3) {
-                    // Try to simplistic parse
-                    const date = parts[0];
-                    const desc = parts[1];
-                    const amt = parseFloat(parts[2]);
-
-                    if (!isNaN(amt)) {
-                        actions.parsedRows.push({ date, desc, amt });
-                    }
-                }
+            rows.forEach((r, index) => {
+                const parts = FinzCore.parseCsvLine(r);
+                if (parts.length < 3) { rejected.push(index + 1); return; }
+                const date = parseImportDate(parts[0]);
+                // Allow thousands separators and currency labels such as "AED 1,200.50".
+                const amt = Number(parts[parts.length - 1].replace(/[^0-9.+-]/g, ''));
+                const desc = parts.slice(1, -1).join(', ');
+                if (!date || !Number.isFinite(amt) || amt === 0) { rejected.push(index + 1); return; }
+                actions.parsedRows.push({ date: date.toISOString(), display: FinzCore.localDateKey(date), desc, amt: FinzCore.money(amt) });
             });
 
+            const btn = document.getElementById('btn-import');
             if (actions.parsedRows.length > 0) {
                 const prev = document.getElementById('csv-preview');
                 FinzUI.setHTML(prev, FinzUI.html`<table class="w-full text-center text-[9px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-2">Date</th><th class="p-2">Desc</th><th class="p-2">Amt</th></tr></thead>
-                <tbody>${actions.parsedRows.map(r => FinzUI.html`<tr><td class="p-2 border-b">${r.date}</td><td class="p-2 border-b">${r.desc}</td><td class="p-2 border-b font-bold ${r.amt > 0 ? 'text-emerald-500' : 'text-red-500'}">${r.amt}</td></tr>`).join('')}</tbody></table>`);
+                <tbody>${actions.parsedRows.map(r => FinzUI.html`<tr><td class="p-2 border-b">${r.display}</td><td class="p-2 border-b">${r.desc}</td><td class="p-2 border-b font-bold ${r.amt > 0 ? 'text-emerald-500' : 'text-red-500'}">${r.amt}</td></tr>`).join('')}</tbody></table>`);
                 prev.classList.remove('hidden');
-                document.getElementById('btn-import').classList.remove('opacity-50', 'cursor-not-allowed');
-                alert(`✅ Parsed ${actions.parsedRows.length} rows! Review and click Import.`);
+                btn?.classList.remove('opacity-50', 'cursor-not-allowed');
+                actions.showToast(`Parsed ${actions.parsedRows.length} rows${rejected.length ? `; skipped line(s) ${rejected.slice(0, 8).join(', ')}${rejected.length > 8 ? '…' : ''}` : ''}. Review and click Run Import.`, rejected.length ? 'warn' : 'success');
             } else {
-                alert("Could not parse rows. Ensure format: YYYY-MM-DD, Description, Amount (Use minus for expense)");
+                btn?.classList.add('opacity-50', 'cursor-not-allowed');
+                actions.showToast('Could not parse any rows. Use: Date, Description, Amount (minus for expense).', 'error');
             }
         };
 
-actions.bulkImport = async function () {
-            if (actions.parsedRows.length === 0) return;
-            const aid = document.getElementById('csv-acc').value;
-            if (!aid) return;
+const showImportPreview = (rejected, what) => {
+            const btn = document.getElementById('btn-import');
+            if (actions.parsedRows.length > 0) {
+                const prev = document.getElementById('csv-preview');
+                FinzUI.setHTML(prev, FinzUI.html`<table class="w-full text-center text-[9px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-2">Date</th><th class="p-2">Desc</th><th class="p-2">Amt</th></tr></thead>
+                <tbody>${actions.parsedRows.map(r => FinzUI.html`<tr><td class="p-2 border-b">${r.display}</td><td class="p-2 border-b">${r.desc}</td><td class="p-2 border-b font-bold ${r.amt > 0 ? 'text-emerald-500' : 'text-red-500'}">${r.currency ? r.currency + ' ' : ''}${r.amt}</td></tr>`).join('')}</tbody></table>`);
+                prev.classList.remove('hidden');
+                btn?.classList.remove('opacity-50', 'cursor-not-allowed');
+                actions.showToast(`Read ${actions.parsedRows.length} ${what}${rejected.length ? `; skipped line(s) ${rejected.slice(0, 8).join(', ')}${rejected.length > 8 ? '…' : ''}` : ''}. Review and click Run Import.`, rejected.length ? 'warn' : 'success');
+            } else {
+                btn?.classList.add('opacity-50', 'cursor-not-allowed');
+                actions.showToast(`Could not read any ${what}.`, 'error');
+            }
+        };
 
-            if (!confirm(`Import ${actions.parsedRows.length} transactions to selected account?`)) return;
+actions.parseSMS = function () {
+            const lines = document.getElementById('sms-input').value.split(/\r?\n/).filter(l => l.trim());
+            actions.parsedRows = [];
+            const rejected = [];
+            lines.forEach((line, index) => {
+                const sms = FinzCore.parseBankSms(line);
+                if (!sms) { rejected.push(index + 1); return; }
+                actions.parsedRows.push({ date: sms.date.toISOString(), display: FinzCore.localDateKey(sms.date), desc: sms.merchant, amt: sms.type === 'income' ? sms.amount : -sms.amount, currency: sms.currency, source: 'SMS' });
+            });
+            showImportPreview(rejected, 'messages');
+        };
+
+actions.bulkImport = async function () {
+            if (!actions.parsedRows?.length) return actions.showToast('Parse your statement first.', 'error');
+            const aid = document.getElementById('csv-acc').value;
+            const account = state.data.accounts.find(a => a.id === aid);
+            if (!account) return actions.showToast('Select an account to import into.', 'error');
+
+            // Skip rows that were already imported into this account.
+            const key = (date, note, amount, type) => `${FinzCore.localDateKey(date)}|${String(note || '').trim().toLowerCase()}|${FinzCore.money(amount)}|${type}`;
+            const existing = new Set(state.data.transactions.filter(t => t.accountId === aid).map(t => key(t.date, t.note, t.amount, t.type)));
+            // SMS rows carry their own currency; book them in the account's currency.
+            const rows = actions.parsedRows.map(r => r.currency && r.currency !== account.currency
+                ? { ...r, desc: `${r.desc} (${r.currency} ${Math.abs(r.amt)})`, amt: Math.sign(r.amt) * FinzCore.convert(Math.abs(r.amt), r.currency, account.currency, state.data.settings.rate) } : r);
+            const fresh = rows.filter(r => !existing.has(key(r.date, r.desc, Math.abs(r.amt), r.amt >= 0 ? 'income' : 'expense')));
+            const duplicates = rows.length - fresh.length;
+            if (!fresh.length) return actions.showToast('All parsed rows were already imported.', 'warn');
+
+            if (!confirm(`Import ${fresh.length} transactions into ${account.name} (${account.currency})?${duplicates ? ` ${duplicates} duplicate row(s) will be skipped.` : ''}`)) return;
 
             actions.setBtnLoading('btn-import', true);
-            const accIdx = state.data.accounts.findIndex(a => a.id === aid);
-            let balChange = 0;
-
-            actions.parsedRows.forEach(r => {
-                const type = r.amt >= 0 ? 'income' : 'expense';
-                balChange += r.amt;
-
+            for (const r of fresh) {
                 state.data.transactions.push({
                     id: actions.genId(),
                     accountId: aid,
-                    amount: Math.abs(r.amt), // Store absolute
-                    type: type,
-                    category: 'Imported',
+                    amount: actions.toCurrency(Math.abs(r.amt)),
+                    type: r.amt >= 0 ? 'income' : 'expense',
+                    category: (r.amt < 0 && actions.guessCategory(r.desc)) || (r.source === 'SMS' ? 'Imported (SMS)' : 'Imported'),
                     note: r.desc,
-                    date: new Date(r.date).toISOString() || new Date().toISOString()
+                    currency: account.currency,
+                    date: r.date,
+                    exchangeRate: state.data.settings.rate
                 });
-            });
-
-            // Update Balance
-            state.data.accounts[accIdx].balance += balChange; // Simple add, floating point risk acceptable for V1 MVP
-
-            await updateDb();
+            }
+            actions.recalculateBalances();
+            try { await updateDb(); }
+            finally { actions.setBtnLoading('btn-import', false); }
+            actions.parsedRows = [];
             actions.closeModal();
             actions.renderApp();
-            alert("Success! Transactions Imported.");
+            actions.showToast(`Imported ${fresh.length} transactions.`, 'success');
         };
 
 actions.setQueryDates = function (mode) {
@@ -186,8 +236,8 @@ actions.setQueryDates = function (mode) {
                 from = new Date(to.getFullYear(), 0, 1);
             }
             
-            const toStr = to.toISOString().split('T')[0];
-            const fromStr = from.toISOString().split('T')[0];
+            const toStr = FinzCore.localDateKey(to);
+            const fromStr = FinzCore.localDateKey(from);
             
             document.getElementById('query-date-from').value = fromStr;
             document.getElementById('query-date-to').value = toStr;
@@ -196,69 +246,48 @@ actions.setQueryDates = function (mode) {
 actions.currentQueryResult = [];
 
 actions.executeCustomQuery = function () {
-            const dFrom = document.getElementById('query-date-from').value;
-            const dTo = document.getElementById('query-date-to').value;
+            const dFrom = FinzCore.parseLocalDate(document.getElementById('query-date-from').value);
+            const dTo = FinzCore.parseLocalDate(document.getElementById('query-date-to').value);
+            if (dTo) dTo.setHours(23, 59, 59, 999);
             const type = document.getElementById('query-type').value;
             const category = document.getElementById('query-category').value;
-            
+
+            // Results are display copies; saved records are never annotated.
             let filtered = state.data.transactions.filter(t => {
                 let mType = true;
                 if (type === 'income') mType = ['income', 'transfer_in'].includes(t.type);
                 if (type === 'expense') mType = ['expense', 'transfer_out'].includes(t.type);
                 if (type === 'transfer') mType = t.type.includes('transfer');
-                
+
                 let mCat = true;
                 if (category !== 'all') {
                     mCat = (t.category === category);
                 }
-                
+
                 let mDate = true;
-                if (dFrom) mDate = mDate && (new Date(t.date) >= new Date(dFrom));
-                if (dTo) {
-                    const endDate = new Date(dTo);
-                    endDate.setHours(23, 59, 59, 999);
-                    mDate = mDate && (new Date(t.date) <= endDate);
-                }
-                
+                if (dFrom) mDate = mDate && (new Date(t.date) >= dFrom);
+                if (dTo) mDate = mDate && (new Date(t.date) <= dTo);
+
                 return mType && mCat && mDate;
-            });
-            
+            }).map(t => ({ ...t, _currency: FinzCore.txCurrency(t, state.data.accounts) }));
+
             // Sort Descending by Date
             filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
             actions.currentQueryResult = filtered;
-            
-            // Calculate Sum
-            let sumAED = 0;
-            let sumINR = 0;
-            const rate = (typeof state !== 'undefined' && state && state.data && state.data.settings && state.data.settings.rate) ? state.data.settings.rate : 22.75;
 
-            filtered.forEach(t => {
-                const acc = state.data.accounts.find(a => a.id === t.accountId);
-                const currency = acc ? acc.currency : 'AED';
-                t._currency = currency;
-                
-                const amt = parseFloat(t.amount);
-                if (currency === 'AED') {
-                    sumAED += amt;
-                    sumINR += (amt * rate);
-                } else if (currency === 'INR') {
-                    sumINR += amt;
-                    sumAED += (amt / rate);
-                } else {
-                    // Fallback treats unknown as AED base
-                    sumAED += amt;
-                    sumINR += (amt * rate);
-                }
-            });
-            
+            // Net total: money in is positive, money out is negative.
+            const rate = state.data.settings.rate || 22.75;
+            const netAED = filtered.reduce((sum, t) => sum + (['income', 'transfer_in'].includes(t.type) ? 1 : -1) * actions.getTransactionBaseAmount(t), 0);
+            const sumAED = Math.abs(netAED), sumINR = sumAED * rate, netSign = netAED < 0 ? '-' : '+';
+
             const resultsDiv = document.getElementById('query-results');
             const tbody = document.getElementById('query-results-body');
             const sumEl = document.getElementById('query-total-sum');
-            
+
             FinzUI.setHTML(sumEl, FinzUI.html`
-                <div class="flex flex-col items-end justify-center">
-                    <div>${actions.fmtMoney(sumAED, 'AED')}</div>
-                    <div class="scale-75 origin-right opacity-80 -mt-1">${actions.fmtMoney(sumINR, 'INR')}</div>
+                <div class="flex flex-col items-end justify-center" title="Net of money in minus money out">
+                    <div>${netSign} ${actions.fmtMoney(sumAED, 'AED')}</div>
+                    <div class="scale-75 origin-right opacity-80 -mt-1">${netSign} ${actions.fmtMoney(sumINR, 'INR')}</div>
                 </div>
             `);
             
@@ -338,7 +367,7 @@ actions.exportCustomQueryPDF = function () {
                     columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } }
                 });
                 
-                doc.save(`FI_SHAANIRE_Query_${new Date().toISOString().split('T')[0]}.pdf`);
+                doc.save(`FI_SHAANIRE_Query_${FinzCore.localDateKey(new Date())}.pdf`);
                 actions.showToast("Query Exported to PDF", "success");
             } catch (err) {
                 console.error("PDF Export Error", err);
@@ -373,6 +402,13 @@ actions.updateTransferUI = function () {
                 }
                 if (lblReceived) lblReceived.innerText = `Received ${tCur} Amount (Credited)`;
                 if (lblFee) lblFee.innerText = `Transfer / Exchange Fee (${sCur}) (Optional app charge / fee)`;
+                // Remittance planner: today's rate against the last 90 days.
+                const adviceEl = document.getElementById('remit-advice');
+                if (adviceEl) {
+                    const advice = FinzCore.remittanceAdvice(state.data);
+                    adviceEl.classList.toggle('hidden', sCur !== 'AED');
+                    adviceEl.innerText = advice.average ? `Today 1 AED = ${advice.today.toFixed(2)} INR • 90-day avg ${advice.average} • best ${advice.best}. ${advice.verdict}` : advice.verdict;
+                }
                 actions.calcTransferEstimate('send');
             } else {
                 if (crossBox) crossBox.classList.add('hidden');
@@ -434,6 +470,16 @@ actions.calcTransferEstimate = function (trigger = 'send') {
             }
         };
 
+// Date inputs hold a local day. Today keeps the exact time (for ordering); other days use local noon.
+actions.entryDateFromInput = function (value) {
+            if (!value) return new Date().toISOString();
+            const day = FinzCore.parseLocalDate(value);
+            if (!day) return null;
+            if (FinzCore.localDateKey(day) === FinzCore.localDateKey(new Date())) return new Date().toISOString();
+            day.setHours(12, 0, 0, 0);
+            return day.toISOString();
+        };
+
 actions.saveTransaction = async function (txData) {
             let transaction = txData;
 
@@ -444,7 +490,7 @@ actions.saveTransaction = async function (txData) {
                     if (acc) {
                         // Parse amount safely (could be formatted string or number)
                         const reqAmt = parseFloat(transaction.amount);
-                        if (acc.balance < reqAmt) {
+                        if (actions.availableToSpend(acc) < reqAmt) {
                             actions.showToast(`Insufficient Funds! (${acc.currency} ${acc.balance} < ${reqAmt})`, "error");
                             // Throwing error to stop execution chains in callers
                             throw new Error("Insufficient Funds");
@@ -461,6 +507,8 @@ actions.saveTransaction = async function (txData) {
                 const type = document.getElementById('tt')?.value;
                 const cat = document.getElementById('tc')?.value;
                 const note = document.getElementById('tn')?.value;
+                const dateEl = document.getElementById('tx-date');
+                const entryDate = actions.entryDateFromInput(dateEl?.value);
 
                 const validation = document.getElementById('tx-validation');
                 if (validation) { validation.textContent = ''; validation.classList.add('hidden'); }
@@ -477,11 +525,15 @@ actions.saveTransaction = async function (txData) {
                     invalid('Enter an amount greater than zero to authorize this entry.', amtEl);
                     return;
                 }
+                if (!entryDate) {
+                    invalid('Select a valid date for this entry.', dateEl);
+                    return;
+                }
 
                 actions.setBtnLoading('btn-save-tx', true);
 
                 const idx = state.data.accounts.findIndex(a => a.id === aId);
-                const currentBal = state.data.accounts[idx].balance;
+                const currentBal = actions.availableToSpend(state.data.accounts[idx]);
 
                 // Insufficient Funds Check
                 if (type === 'expense' && currentBal < amt) {
@@ -503,7 +555,7 @@ actions.saveTransaction = async function (txData) {
                     type,
                     category: cat,
                     note,
-                    date: new Date().toISOString(),
+                    date: entryDate,
                     exchangeRate: rateSnapshot,
                     excludeFromBudget: (type === 'expense' && isExcluded)
                 };
@@ -511,21 +563,43 @@ actions.saveTransaction = async function (txData) {
                 transaction.excludeFromBudget = Boolean(transaction.excludeFromBudget);
             }
 
+            // Bill split (form entries only): the payer's share stays the expense; each other share becomes a receivable.
+            const splitWith = !txData && transaction.type === 'expense'
+                ? [...document.querySelectorAll('.tx-split-contact:checked')].map(el => el.value).filter(Boolean) : [];
+            const splitEntries = [], splitDebts = [];
+            if (splitWith.length) {
+                const payer = state.data.accounts.find(a => a.id === transaction.accountId);
+                const totalCents = Math.round(Number(transaction.amount) * 100);
+                const shares = FinzCore.splitCents(totalCents, splitWith.length + 1);
+                const splitGroupId = actions.genId(), label = transaction.note || transaction.category || 'Shared bill';
+                splitWith.forEach((name, i) => {
+                    const share = shares[i + 1] / 100, debtId = actions.genId();
+                    splitDebts.push({ id: debtId, type: 'receivable', party: name, amount: share, originalAmount: share, currency: payer.currency,
+                        date: FinzCore.localDateKey(transaction.date), repaymentDate: '', notes: `Split: ${label}`, settled: false, splitGroupId });
+                    splitEntries.push({ id: actions.genId(), accountId: payer.id, amount: share, type: 'expense', category: 'Loan Given',
+                        note: `Split with ${name}: ${label}`, date: transaction.date, exchangeRate: transaction.exchangeRate, currency: payer.currency, splitGroupId });
+                });
+                transaction.splitGroupId = splitGroupId;
+                transaction.note = `${label} (your share of ${(totalCents / 100).toFixed(2)})`;
+                transaction.amount = shares[0] / 100;
+            }
+
             const account = state.data.accounts.find(a => a.id === transaction.accountId);
-            const value = Number(transaction.amount);
+            const value = Number(transaction.amount) + splitEntries.reduce((sum, e) => sum + e.amount, 0);
             if (!account || !Number.isFinite(value) || value <= 0 || !['income', 'expense', 'transfer_in', 'transfer_out'].includes(transaction.type)) {
                 actions.setBtnLoading('btn-save-tx', false);
                 throw new Error('Invalid transaction account, type or amount.');
             }
             actions.recalculateBalances();
-            if (['expense', 'transfer_out'].includes(transaction.type) && account.balance < value) {
+            if (['expense', 'transfer_out'].includes(transaction.type) && actions.availableToSpend(account) < value) {
                 actions.setBtnLoading('btn-save-tx', false); throw new Error('Insufficient Funds');
             }
-            transaction.amount = FinzCore.money(value);
+            transaction.amount = FinzCore.money(Number(transaction.amount));
             transaction.currency = account.currency;
             transaction.exchangeRate = transaction.exchangeRate || state.data.settings.rate;
-            // 2. Commit to State
-            state.data.transactions.push(transaction);
+            // 2. Commit to State (the split shares are saved in the same write)
+            state.data.transactions.push(transaction, ...splitEntries);
+            state.data.debts.push(...splitDebts);
 
             // 3. Persist & Clean Up
             actions.recalculateBalances(); // Derive new balances
@@ -538,7 +612,7 @@ actions.saveTransaction = async function (txData) {
                 closeModal();
                 actions.renderApp();
                 // success toast handled by caller if programmatic, else here
-                actions.showToast("Transaction Saved", "success");
+                actions.showToast(splitWith.length ? `Saved. ${splitWith.join(', ')} now owe you their share.` : "Transaction Saved", "success");
             }
         };
 
@@ -588,7 +662,7 @@ actions.doTransfer = async function () {
             }
             const totalDebit = val + fee;
 
-            if (sAcc.balance < totalDebit) {
+            if (actions.availableToSpend(sAcc) < totalDebit) {
                 const errDiv = document.getElementById('transfer-error-msg');
                 const errMsg = `Insufficient Funds! (${sAcc.currency} ${sAcc.balance.toLocaleString()} available < ${totalDebit.toLocaleString()} required)`;
                 if (errDiv) {
@@ -607,7 +681,9 @@ actions.doTransfer = async function () {
 
             const dateIso = new Date().toISOString();
             const transferGroupId = actions.genId();
-            const noteSuffix = isCrossCurrency ? ` (Rate: ${customRate.toFixed(2)}${fee > 0 ? `, Fee: ${sAcc.currency} ${fee}` : ''})` : '';
+            const noteSuffix = isCrossCurrency ? ` (Rate: ${customRate.toFixed(customRate < 1 ? 4 : 2)}${fee > 0 ? `, Fee: ${sAcc.currency} ${fee}` : ''})` : '';
+            // Stored rates are always INR per 1 AED, whichever direction the money moved.
+            const storedRate = isCrossCurrency && sAcc.currency === 'INR' ? 1 / customRate : customRate;
 
             // 1. Transfer Out on Source Account
             state.data.transactions.push({
@@ -618,7 +694,7 @@ actions.doTransfer = async function () {
                 category: tCat,
                 note: `To ${tAcc.name}: ${n}${noteSuffix}`,
                 date: dateIso,
-                exchangeRate: customRate,
+                exchangeRate: storedRate,
                 transferTo: tId,
                 currency: sAcc.currency
             });
@@ -632,7 +708,7 @@ actions.doTransfer = async function () {
                 category: tCat,
                 note: `From ${sAcc.name}: ${n}${noteSuffix}`,
                 date: dateIso,
-                exchangeRate: customRate,
+                exchangeRate: storedRate,
                 transferFrom: sId,
                 currency: tAcc.currency
             });
@@ -647,7 +723,7 @@ actions.doTransfer = async function () {
                     category: 'Bank Charges',
                     note: `Transfer Fee for ${n} to ${tAcc.name}`,
                     date: dateIso,
-                    exchangeRate: customRate
+                    exchangeRate: storedRate
                 });
             }
 
@@ -808,6 +884,12 @@ actions.deleteTransaction = async (id) => {
                                 FinzUI.setHTML(modalContent, actions.renderDebtUI()); 
                                 lucide.createIcons();
                             }
+                        } else if (tx?.accountId && state.data.accounts.some(a => a.id === tx.accountId)) {
+                            const title = document.getElementById('modal-title');
+                            const acc = state.data.accounts.find(a => a.id === tx.accountId);
+                            if (title && acc && title.innerText === acc.name && typeof actions.viewAccountLedger === 'function') {
+                                actions.viewAccountLedger(acc.id);
+                            }
                         }
                     } catch (error) {
                         console.error("Delete failed:", error);
@@ -823,6 +905,8 @@ actions.editTransaction = (id) => {
             const tx = state.data.transactions.find(t => t.id === id);
             if (!tx) return;
 
+            // Linked transfers are edited as a pair (both sides and the fee together).
+            if (tx.transferGroupId && tx.type.includes('transfer') && !tx.debtId) return actions.editTransferGroup(tx.transferGroupId);
             // Block complex edits
             if (tx.debtId || tx.type.includes('transfer') || ['Settlement', 'Lending', 'Borrowing'].includes(tx.category) || tx.accountId === 'virtual_writeoff') {
                 alert("⚠? Complex Entry Locked\n\nTransfers, Debt Settlements, and Write-offs cannot be edited directly because they affect multiple records.\n\nPlease DELETE this entry and create a new one.");
@@ -832,13 +916,26 @@ actions.editTransaction = (id) => {
             // Open Modal
             actions.openModal('transaction');
 
-            // Fill values
+            // Fill values. The selects must contain the entry's own account and category,
+            // otherwise the browser silently picks the first option and the update moves the entry.
             document.getElementById('tt').value = tx.type;
             actions.setT(tx.type); // Update UI buttons
-            document.getElementById('ta').value = tx.accountId;
-            document.getElementById('tc').value = tx.category;
+            const ensureOption = (select, value, label) => {
+                if (!select || value === undefined || value === null || value === '') return;
+                if (![...select.options].some(o => o.value === value)) {
+                    const option = document.createElement('option');
+                    option.value = value; option.textContent = label;
+                    select.appendChild(option);
+                }
+                select.value = value;
+            };
+            const txAccount = state.data.accounts.find(a => a.id === tx.accountId);
+            ensureOption(document.getElementById('ta'), tx.accountId, txAccount ? `${txAccount.name} (${txAccount.currency})` : tx.accountId);
+            ensureOption(document.getElementById('tc'), tx.category, tx.category);
             document.getElementById('tam').value = tx.amount;
-            document.getElementById('tn').value = tx.note;
+            document.getElementById('tn').value = tx.note || '';
+            const dateEl = document.getElementById('tx-date');
+            if (dateEl) dateEl.value = FinzCore.localDateKey(tx.date);
             const excludeEl = document.getElementById('tx-exclude-budget');
             if (excludeEl) {
                 excludeEl.checked = Boolean(tx.excludeFromBudget);
@@ -852,6 +949,77 @@ actions.editTransaction = (id) => {
             btn.onclick = () => actions.updateTransaction(id);
         };
 
+const transferParts = groupId => {
+    const group = state.data.transactions.filter(t => t.transferGroupId === groupId);
+    return { out: group.find(t => t.type === 'transfer_out'), inn: group.find(t => t.type === 'transfer_in'), fee: group.find(t => t.type === 'expense') };
+};
+const userNote = text => String(text || '').replace(/^(To|From) [^:]*: /, '').replace(/ \(Rate: [^)]*\)$/, '');
+
+actions.editTransferGroup = function (groupId) {
+            const { out, inn, fee } = transferParts(groupId);
+            if (!out || !inn) return actions.showToast('This transfer is incomplete and cannot be edited.', 'error');
+            const from = state.data.accounts.find(a => a.id === out.accountId), to = state.data.accounts.find(a => a.id === inn.accountId);
+            if (!from || !to) return actions.showToast('One of the accounts in this transfer no longer exists.', 'error');
+            const cross = from.currency !== to.currency;
+            actions.openModal('transaction');
+            document.getElementById('modal-title').innerText = 'Edit Transfer';
+            FinzUI.setHTML(document.getElementById('modal-content'), FinzUI.html`
+                <div class="text-slate-100 max-w-xl mx-auto bg-slate-800 p-8 rounded-[2.5rem] border border-slate-700 shadow-2xl text-left space-y-4">
+                    <p class="text-xs font-bold text-slate-400">${from.name} (${from.currency}) → ${to.name} (${to.currency}). Both sides are saved together.</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-[10px] font-black uppercase text-slate-400 block mb-1">Sent (${from.currency})</label>
+                            <input type="number" id="etg-out" value="${out.amount}" class="w-full p-3 border border-slate-700 rounded-xl bg-slate-900 text-white font-black"></div>
+                        <div><label class="text-[10px] font-black uppercase text-slate-400 block mb-1">Received (${to.currency})</label>
+                            <input type="number" id="etg-in" value="${inn.amount}" ${cross ? '' : 'disabled'} class="w-full p-3 border border-slate-700 rounded-xl bg-slate-900 text-white font-black disabled:opacity-50"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-[10px] font-black uppercase text-slate-400 block mb-1">Fee (${from.currency})</label>
+                            <input type="number" id="etg-fee" value="${fee ? fee.amount : 0}" class="w-full p-3 border border-slate-700 rounded-xl bg-slate-900 text-white font-black"></div>
+                        <div><label class="text-[10px] font-black uppercase text-slate-400 block mb-1">Date</label>
+                            <input type="date" id="etg-date" value="${FinzCore.localDateKey(out.date)}" class="w-full p-3 border border-slate-700 rounded-xl bg-slate-900 text-white font-bold text-xs"></div>
+                    </div>
+                    <div><label class="text-[10px] font-black uppercase text-slate-400 block mb-1">Note</label>
+                        <input type="text" id="etg-note" value="${userNote(out.note)}" class="w-full p-3 border border-slate-700 rounded-xl bg-slate-900 text-white"></div>
+                    <button id="btn-save-transfer-edit" data-finz-click="${FinzUI.handler(function(event) { return actions.saveTransferGroup(groupId); })}" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-2xl font-black uppercase text-sm">Save Transfer</button>
+                </div>`);
+        };
+
+actions.saveTransferGroup = async function (groupId) {
+            const { out, inn, fee } = transferParts(groupId);
+            if (!out || !inn) return;
+            const from = state.data.accounts.find(a => a.id === out.accountId), to = state.data.accounts.find(a => a.id === inn.accountId);
+            const cross = from.currency !== to.currency;
+            const sent = parseFloat(document.getElementById('etg-out').value);
+            const received = cross ? parseFloat(document.getElementById('etg-in').value) : sent;
+            const feeAmt = parseFloat(document.getElementById('etg-fee').value) || 0;
+            const dateValue = document.getElementById('etg-date').value;
+            const note = document.getElementById('etg-note').value.trim() || 'Fund Transfer';
+            if (!(sent > 0) || !(received > 0) || feeAmt < 0) return actions.showToast('Enter positive amounts and a fee of zero or more.', 'error');
+            let date = out.date;
+            if (dateValue && dateValue !== FinzCore.localDateKey(out.date)) {
+                date = actions.entryDateFromInput(dateValue);
+                if (!date) return actions.showToast('Select a valid date.', 'error');
+            }
+            // The source gets back what it paid before, then pays the new figures.
+            actions.recalculateBalances();
+            const headroom = actions.availableToSpend(from) + Number(out.amount) + Number(fee?.amount || 0);
+            if (headroom < sent + feeAmt) return actions.showToast(`Insufficient funds in ${from.name}.`, 'error');
+            const rateShown = received / sent;
+            const suffix = cross ? ` (Rate: ${rateShown.toFixed(rateShown < 1 ? 4 : 2)}${feeAmt > 0 ? `, Fee: ${from.currency} ${feeAmt}` : ''})` : '';
+            const storedRate = cross ? (from.currency === 'AED' ? received / sent : sent / received) : out.exchangeRate;
+            Object.assign(out, { amount: actions.toCurrency(sent), date, note: `To ${to.name}: ${note}${suffix}`, exchangeRate: storedRate });
+            Object.assign(inn, { amount: actions.toCurrency(received), date, note: `From ${from.name}: ${note}${suffix}`, exchangeRate: storedRate });
+            if (fee && feeAmt > 0) Object.assign(fee, { amount: actions.toCurrency(feeAmt), date, note: `Transfer Fee for ${note} to ${to.name}` });
+            else if (fee) state.data.transactions = state.data.transactions.filter(t => t.id !== fee.id);
+            else if (feeAmt > 0) state.data.transactions.push({ id: actions.genId(), transferGroupId: groupId, accountId: from.id, amount: actions.toCurrency(feeAmt), type: 'expense', category: 'Bank Charges', note: `Transfer Fee for ${note} to ${to.name}`, date, exchangeRate: storedRate, currency: from.currency });
+            actions.setBtnLoading('btn-save-transfer-edit', true);
+            try { await updateDb(); } finally { actions.setBtnLoading('btn-save-transfer-edit', false); }
+            actions.recalculateBalances();
+            actions.closeModal();
+            actions.renderApp();
+            actions.showToast('Transfer updated.', 'success');
+        };
+
 actions.updateTransaction = async (id) => {
             if (document.getElementById('btn-save-tx')?.disabled) return;
             // Get New Values
@@ -860,6 +1028,7 @@ actions.updateTransaction = async (id) => {
             const type = document.getElementById('tt').value;
             const cat = document.getElementById('tc').value;
             const note = document.getElementById('tn').value;
+            const dateValue = document.getElementById('tx-date')?.value;
 
             if (!aId || isNaN(amt)) return;
 
@@ -881,7 +1050,7 @@ actions.updateTransaction = async (id) => {
                 actions.setBtnLoading('btn-save-tx', false); actions.showToast('Invalid entry.', 'error'); return;
             }
             const oldEffect = previous.accountId === aId ? (previous.type === 'income' ? Number(previous.amount) : -Number(previous.amount)) : 0;
-            if (type === 'expense' && account.balance - oldEffect < amt) {
+            if (type === 'expense' && actions.availableToSpend(account) - oldEffect < amt) {
                 actions.setBtnLoading('btn-save-tx', false); actions.showToast('Insufficient Funds!', 'error'); return;
             }
             // 1. Update Transaction Object
@@ -889,6 +1058,12 @@ actions.updateTransaction = async (id) => {
             const oldTx = state.data.transactions[txIdx];
             const excludeEl = document.getElementById('tx-exclude-budget');
             const isExcluded = excludeEl ? excludeEl.checked : false;
+            // Keep the original timestamp unless the user picked a different day.
+            let date = oldTx.date;
+            if (dateValue && dateValue !== FinzCore.localDateKey(oldTx.date)) {
+                date = actions.entryDateFromInput(dateValue);
+                if (!date) { actions.setBtnLoading('btn-save-tx', false); actions.showToast('Select a valid date.', 'error'); return; }
+            }
 
             state.data.transactions[txIdx] = {
                 ...oldTx,
@@ -897,6 +1072,7 @@ actions.updateTransaction = async (id) => {
                 type: type,
                 category: cat,
                 note: note,
+                date,
                 currency: account.currency,
                 exchangeRate: previous.accountId === aId ? previous.exchangeRate : state.data.settings.rate,
                 excludeFromBudget: (type === 'expense' && isExcluded),
@@ -918,9 +1094,39 @@ actions.openSmartInput = function() {
     modal.classList.replace('hidden', 'flex');
     const inp = document.getElementById('smart-input-field');
     inp.value = '';
+    // Account picker: remembers the last account used on this device.
+    const select = document.getElementById('smart-input-acc');
+    if (select) {
+        let last = null; try { last = localStorage.getItem('finz_smart_acc'); } catch (_) { /* storage unavailable */ }
+        const options = actions.cashAccounts();
+        FinzUI.setHTML(select, options.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join(''));
+        if (options.some(a => a.id === last)) select.value = last;
+    }
     setTimeout(() => inp.focus(), 100);
     lucide.createIcons();
 };
+
+// Maps a description to one of the user's OWN categories (so it counts against a real envelope), or null.
+actions.guessCategory = function (desc) {
+    const lowerDesc = String(desc || '').toLowerCase();
+    const userCategories = actions.getAllBudgetCategories ? actions.getAllBudgetCategories() : (state.data.expenseCategories || []);
+    const findCategory = (...names) => userCategories.find(c => names.some(n => c.toLowerCase().includes(n)));
+    const keywordGroups = [
+        [['starbucks', 'coffee', 'food', 'lunch', 'dinner', 'breakfast', 'restaurant', 'talabat', 'zomato', 'deliveroo', 'swiggy'], ['dining', 'food', 'restaurant']],
+        [['uber', 'careem', 'taxi', 'fuel', 'petrol', 'adnoc', 'enoc', 'eppco', 'metro', 'salik', 'parking', 'rta'], ['transport', 'fuel', 'car']],
+        [['grocery', 'groceries', 'supermarket', 'lulu', 'carrefour', 'spinneys', 'union coop', 'waitrose', 'bigbasket', 'blinkit'], ['grocer', 'food']],
+        [['amazon', 'noon', 'shein', 'mall', 'flipkart', 'myntra'], ['shopping']],
+        [['dewa', 'sewa', 'addc', 'du ', 'etisalat', 'e&', 'internet', 'electricity', 'water bill', 'airtel', 'jio'], ['utilit', 'bill']],
+        [['rent', 'ejari'], ['rent']]
+    ];
+    let category = userCategories.find(c => lowerDesc.includes(c.toLowerCase()));
+    for (const [keywords, names] of keywordGroups) {
+        if (category) break;
+        if (keywords.some(k => lowerDesc.includes(k))) category = findCategory(...names);
+    }
+    return category || null;
+};
+actions.guessCategory.fallback = () => (actions.getAllBudgetCategories ? actions.getAllBudgetCategories() : []).find(c => c.toLowerCase().includes('other')) || 'Other';
 
 actions.processSmartInput = async function() {
     const inp = document.getElementById('smart-input-field').value.trim();
@@ -943,26 +1149,33 @@ actions.processSmartInput = async function() {
         amt = parseFloat(match[2]);
     }
 
-    // Auto-categorize based on keywords (rudimentary smart engine)
-    let category = 'Other';
-    const lowerDesc = desc.toLowerCase();
-    if (lowerDesc.includes('starbucks') || lowerDesc.includes('coffee') || lowerDesc.includes('food') || lowerDesc.includes('lunch') || lowerDesc.includes('dinner')) category = 'Dining';
-    else if (lowerDesc.includes('uber') || lowerDesc.includes('taxi') || lowerDesc.includes('fuel')) category = 'Transport';
-    else if (lowerDesc.includes('grocery') || lowerDesc.includes('supermarket') || lowerDesc.includes('lulu') || lowerDesc.includes('carrefour')) category = 'Groceries';
-    else if (lowerDesc.includes('amazon') || lowerDesc.includes('noon')) category = 'Shopping';
+    if (!Number.isFinite(amt) || amt <= 0) {
+        actions.showToast("Enter an amount greater than zero.", "error");
+        return;
+    }
 
-    // Find default Cash/Bank account
-    const acc = state.data.accounts.find(a => a.type === 'Cash' || a.type === 'Bank Account') || state.data.accounts[0];
+    const category = actions.guessCategory(desc) || actions.guessCategory.fallback();
+
+
+    // The chosen account, else the first cash/bank account.
+    const chosen = document.getElementById('smart-input-acc')?.value;
+    const acc = state.data.accounts.find(a => a.id === chosen) || actions.cashAccounts()[0] || state.data.accounts[0];
     if (!acc) {
         actions.showToast("No account found to log expense", "error");
         return;
     }
+    try { localStorage.setItem('finz_smart_acc', acc.id); } catch (_) { /* storage unavailable */ }
+    actions.recalculateBalances();
+    if (actions.availableToSpend(acc) < amt) {
+        actions.showToast(`Insufficient funds in ${acc.name}.`, "error");
+        return;
+    }
 
-    // Log the transaction
     state.data.transactions.push({
         id: actions.genId(),
         accountId: acc.id,
-        amount: actions.toCurrency(amt), // Store natively, assuming base currency for smart input
+        amount: actions.toCurrency(amt), // Amount is in the account's own currency
+        currency: acc.currency,
         type: 'expense',
         category: category,
         note: desc,
@@ -970,16 +1183,21 @@ actions.processSmartInput = async function() {
         exchangeRate: state.data.settings.rate
     });
 
-    actions.showToast(`Logged ${amt} ${acc.currency} to ${category}`, "success");
     document.getElementById('smart-input-modal').classList.replace('flex', 'hidden');
     actions.recalculateBalances();
     await actions.updateDb();
     actions.renderApp();
+    actions.showToast(`Logged ${amt} ${acc.currency} to ${category} (${acc.name})`, "success");
 };
 
-actions.renderLedger = function(items) {
+const LEDGER_PAGE = 200;
+actions.ledgerLimit = LEDGER_PAGE;
+actions.renderLedger = function(items, keepLimit = false) {
     const body = document.getElementById('master-ledger-body'); if (!body) return;
-    const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (!keepLimit) actions.ledgerLimit = LEDGER_PAGE; // A new search or filter starts from the top
+    const all = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Rendering thousands of rows at once freezes phones; show a page and load more on request.
+    const sorted = all.slice(0, actions.ledgerLimit);
     
     if (sorted.length === 0) {
         FinzUI.setHTML(body, FinzUI.html`<div class="p-12 text-center text-slate-500 font-bold text-xs uppercase tracking-widest border border-dashed border-slate-700/50 rounded-2xl mt-8">No transactions found</div>`);
@@ -1062,6 +1280,9 @@ actions.renderLedger = function(items) {
     });
     
     html += FinzUI.html`</div></div>`;
+    if (all.length > sorted.length) {
+        html += FinzUI.html`<div class="text-center mt-4"><button data-finz-click="${FinzUI.handler(function(event) { actions.ledgerLimit += LEDGER_PAGE; return actions.renderLedger(items, true); })}" class="px-6 py-3 bg-slate-800 border border-slate-700 text-slate-200 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-700">Show more (${sorted.length} of ${all.length})</button></div>`;
+    }
     
     FinzUI.setHTML(body, html);
     lucide.createIcons();

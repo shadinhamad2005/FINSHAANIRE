@@ -21,7 +21,7 @@ const cleanCustomCss = customCss.replace(/@import\s+url\([^)]+\)[^;\r\n]*;?/g, '
 const builtCss = await fs.readFile(path.join(output, 'assets/app.css'), 'utf8');
 await fs.writeFile(path.join(output, 'assets/app.css'), (imports.length ? imports.join('\n') + '\n' : '') + builtCss + '\n' + cleanCustomCss);
 const csp = ["default-src 'self'", "script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://www.recaptcha.net/recaptcha/", "script-src-attr 'none'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data: blob:",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data: blob: https://flagcdn.com",
     "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://api.exchangerate-api.com https://api.mfapi.in https://api.gold-api.com https://www.google.com https://www.recaptcha.net",
     "frame-src https://my-finance-454c2.firebaseapp.com https://www.google.com https://www.recaptcha.net", "object-src 'none'", "base-uri 'self'", "form-action 'self'"].join('; ');
 let html = await fs.readFile('index.html', 'utf8');
@@ -34,5 +34,5 @@ if (!testing) {
     await fs.copyFile(path.join(output, 'assets/app.js'), 'assets/app.js');
     await fs.copyFile(path.join(output, 'assets/app.css'), 'assets/app.css');
 }
-await fs.writeFile(path.join(output, 'build-info.json'), JSON.stringify({ version: '2.7.0', testing, appCheckConfigured: Boolean(siteKey) }));
+await fs.writeFile(path.join(output, 'build-info.json'), JSON.stringify({ version: '2.9.0', testing, appCheckConfigured: Boolean(siteKey) }));
 console.log(`Built ${testing ? 'test' : 'application'} files in ${path.basename(output)}. App Check configured: ${Boolean(siteKey)}.`);

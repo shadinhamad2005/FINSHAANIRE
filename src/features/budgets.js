@@ -34,7 +34,10 @@ actions.calculateWealthAllocation = function () {
 
                 const item = { name: a.name, value: val, currency: a.currency, originalBalance: a.balance };
 
-                if (['Bank Account', 'Cash', 'Savings'].includes(a.type)) {
+                if (a.type === 'Credit Card') {
+                    // Money owed on a card is a liability, not a (negative) asset.
+                    if (val < 0) { groups['Liabilities'].total += -val; groups['Liabilities'].items.push({ ...item, value: -val }); }
+                } else if (['Bank Account', 'Cash', 'Savings'].includes(a.type)) {
                     groups['Liquid Assets'].total += val;
                     groups['Liquid Assets'].items.push(item);
                 } else if (['Mutual Fund', 'Stock', 'Crypto'].includes(a.type)) {
@@ -220,7 +223,8 @@ actions.finalizeSweep = async function () {
 actions.setBudget = function (cat) {
             actions.showPrompt(`Budget for ${cat}`, "Set Monthly Limit (AED):", async (valStr) => {
                 const val = parseFloat(valStr);
-                if (!isNaN(val)) {
+                if (!Number.isFinite(val) || val < 0) { actions.showToast('Enter a budget of zero or more.', 'error'); return false; }
+                {
                     if (!state.data.budgets) state.data.budgets = {};
                     state.data.budgets[cat] = val;
                     await updateDb(); actions.openModal('budget');
@@ -248,7 +252,7 @@ actions.checkBudgetRollover = async function () {
                             t.type === 'expense' && t.category === c && !t.excludeFromBudget &&
                             new Date(t.date).getMonth() === last.getMonth() &&
                             new Date(t.date).getFullYear() === last.getFullYear()
-                        ).reduce((s, t) => s + parseFloat(t.amount), 0);
+                        ).reduce((s, t) => s + actions.getTransactionBaseAmount(t), 0); // Budgets are in AED
 
                         const leftover = Math.max(0, budget - spend);
                         if (leftover > 0) {
@@ -277,11 +281,12 @@ actions.renderGoalsUI = function () {
                             </div>
                             <div>
                                 <h4 class="font-bold text-sm text-slate-900">${g.name}</h4>
-                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Target: ${actions.fmtMoney(g.target, g.currency)} | Saved: ${actions.fmtMoney(g.saved, g.currency)}</p>
+                                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Target: ${actions.fmtMoney(g.target, g.currency)} | Saved: ${actions.fmtMoney(FinzCore.goalSaved(g, state.data), g.currency)}</p>
+                                ${g.accountId ? FinzUI.html`<p class="text-[9px] font-bold text-emerald-600 uppercase"><i data-lucide="link" class="w-3 h-3 inline"></i> Tracks ${state.data.accounts.find(a => a.id === g.accountId)?.name || 'a removed account'}</p>` : ''}
                             </div>
                         </div>
                         <div class="flex space-x-2">
-                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.addGoalFunds(((g.id))) })}" class="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold uppercase hover:bg-emerald-100">+ Add Funds</button>
+                            ${g.accountId ? '' : FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { return actions.addGoalFunds(((g.id))) })}" class="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold uppercase hover:bg-emerald-100">+ Add Funds</button>`}
                             <button data-finz-click="${FinzUI.handler(function(event) { return actions.deleteGoal(((g.id))) })}" class="px-3 py-2 bg-red-50 text-red-500 rounded-xl text-xs font-bold hover:bg-red-100"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </div>`).join('') || FinzUI.literal("<p class=\"text-center text-slate-400 py-8 font-bold text-xs uppercase tracking-widest\">No Active Goals</p>")}
@@ -304,6 +309,10 @@ actions.renderGoalsUI = function () {
                             <option value="shield-alert">Emergency</option>
                         </select>
                         <input type="number" id="g-target" placeholder="Target Amount" class="col-span-2 p-4 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 text-sm font-bold text-center">
+                        <select id="g-account" class="col-span-2 p-4 border border-slate-200 rounded-2xl outline-none font-bold text-center text-slate-600">
+                            <option value="">Track manually (add funds yourself)</option>
+                            ${actions.activeAccounts().filter(a => !['Credit Card'].includes(a.type)).map(a => FinzUI.html`<option value="${a.id}">Track account: ${a.name} (${a.currency})</option>`).join('')}
+                        </select>
                     </div>
                     <button data-finz-click="${FinzUI.handler(function(event) { return actions.saveGoal() })}" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg hover:bg-indigo-500 transition-colors">Create Goal Envelope</button>
                 </div>
@@ -316,13 +325,15 @@ actions.saveGoal = async function () {
             const target = document.getElementById('g-target').value;
             const currency = document.getElementById('g-currency').value;
             const icon = document.getElementById('g-icon').value;
+            const accountId = document.getElementById('g-account')?.value || '';
 
-            if (!name || !target) return actions.showToast("Fill required fields", "error");
+            if (!name || !(parseFloat(target) > 0)) return actions.showToast("Enter a goal name and a target above zero", "error");
 
             if (!state.data.goals) state.data.goals = [];
+            // A linked goal follows that account's real balance instead of a manually added figure.
             state.data.goals.push({
                 id: actions.genId(),
-                name, target: parseFloat(target), saved: 0, currency, icon
+                name, target: parseFloat(target), saved: 0, currency, icon, ...(accountId ? { accountId } : {})
             });
 
             await updateDb();
@@ -401,7 +412,7 @@ actions.openBudgetSettings = function () {
             </div>`);
         };
 
-actions.saveBudgets = async function () { state.data.expenseCategories.forEach(cat => { state.data.budgets[cat] = parseFloat(document.getElementById(`budget-${cat}`).value) || 0; }); await updateDb(); actions.openModal('budget'); };
+actions.saveBudgets = async function () { state.data.expenseCategories.forEach(cat => { state.data.budgets[cat] = Math.max(0, parseFloat(document.getElementById(`budget-${cat}`).value) || 0); }); await updateDb(); actions.openModal('budget'); };
 
 actions.runImpulseTest = function () {
             actions.showPrompt("Impulse Reality Check", "Cost of item you want to buy (AED)?", (priceStr) => {
@@ -597,7 +608,7 @@ actions.saveBudgetWizard = async function() {
     state.data.settings.expectedSalary = actions.budgetWizardState.expectedSalary;
     document.querySelectorAll('.wizard-budget-input').forEach(input => {
         const cat = input.getAttribute('data-cat');
-        const val = parseFloat(input.value) || 0;
+        const val = Math.max(0, parseFloat(input.value) || 0); // Negative budgets would make backups unrestorable
         state.data.budgets[cat] = val;
     });
     await actions.updateDb();
@@ -716,6 +727,10 @@ actions.processSalary = async function () {
         
         const rateSnapshot = state.data.settings.rate;
         const date = new Date().toISOString();
+        const salaryAccount = state.data.accounts.find(a => a.id === aId);
+        if (!salaryAccount) throw new Error('Select the account that received the salary.');
+        // Envelopes are budgeted in AED, so a salary paid into an INR account is converted.
+        const creditAED = FinzCore.convert(amt, salaryAccount.currency, 'AED', rateSnapshot);
 
         // Generate Report of outgoing cycle
         const oldStats = actions.getEnvelopeStats();
@@ -736,12 +751,12 @@ actions.processSalary = async function () {
 
         // Log the income to the bank
         state.data.transactions.push({
-            id: actions.genId(), accountId: aId, amount: actions.toCurrency(amt), type: 'income', category: 'Salary', note: `Salary Credited`, date, exchangeRate: rateSnapshot
+            id: actions.genId(), accountId: aId, amount: actions.toCurrency(amt), currency: salaryAccount.currency, type: 'income', category: 'Salary', note: `Salary Credited`, date, exchangeRate: rateSnapshot
         });
 
         // Log the credit to the envelope system
         state.data.envelopeLedger.push({
-            id: actions.genId(), date, type: 'credit', amount: amt
+            id: actions.genId(), date, type: 'credit', amount: creditAED
         });
 
         // Set last salary date for tracking period
@@ -755,7 +770,7 @@ actions.processSalary = async function () {
         actions.renderBudgetUIOverride();
     } catch (err) {
         console.error(err);
-        actions.showToast("An error occurred while processing", "error");
+        actions.showToast(err?.message ? `Salary not saved: ${err.message}` : "An error occurred while processing", "error");
         if (btn && btn.tagName === 'BUTTON') {
             FinzUI.setHTML(btn, originalText);
             btn.disabled = false;
@@ -768,30 +783,40 @@ actions.processSalary = async function () {
 
 actions.promptFundCategory = function(cat) {
     const stats = actions.getEnvelopeStats();
+    const currentFunded = stats.categories[cat]?.funded || 0;
     
-    actions.showPrompt(`Fund ${cat}`, `Enter amount to assign to ${cat}. (Unallocated Cash: ${stats.unallocatedCash})`, async (val) => {
-        const amount = parseFloat(val);
-        if (isNaN(amount) || amount === 0) return;
-        
-        // If they enter a positive number, it's funding. If negative, defunding.
-        if (amount > 0 && amount > stats.unallocatedCash) {
-            actions.showToast("Not enough unallocated cash!", "error");
-            return;
+    actions.showPrompt(
+        `Fund ${cat}`,
+        `Enter amount to add (e.g. 100) or subtract (e.g. -100).\nCurrently Funded: AED ${currentFunded.toLocaleString()} • Unallocated Cash: AED ${stats.unallocatedCash.toLocaleString()}.\n\nTip: You can also use the Edit (pencil) button on this envelope card to set the exact total or move funds directly.`,
+        async (val) => {
+            const amount = parseFloat(val);
+            if (isNaN(amount) || amount === 0) return;
+            
+            // If they enter a positive number, it's funding. If negative, defunding.
+            if (amount > 0 && amount > stats.unallocatedCash + 0.005) {
+                actions.showToast("Not enough unallocated cash!", "error");
+                return;
+            }
+
+            if (amount < 0 && Math.abs(amount) > currentFunded + 0.005) {
+                actions.showToast(`Cannot subtract more than currently funded (AED ${currentFunded.toLocaleString()})`, "error");
+                return;
+            }
+
+            const type = amount > 0 ? 'fund' : 'defund';
+            
+            state.data.envelopeLedger.push({
+                id: actions.genId(),
+                date: new Date().toISOString(),
+                type: type,
+                category: cat,
+                amount: Math.abs(amount)
+            });
+
+            await actions.updateDb();
+            actions.renderBudgetUIOverride();
         }
-
-        const type = amount > 0 ? 'fund' : 'defund';
-        
-        state.data.envelopeLedger.push({
-            id: actions.genId(),
-            date: new Date().toISOString(),
-            type: type,
-            category: cat,
-            amount: Math.abs(amount)
-        });
-
-        await actions.updateDb();
-        actions.renderBudgetUIOverride();
-    });
+    );
 };
 
 actions.viewBudgetReports = function() {
@@ -932,7 +957,7 @@ actions.downloadBudgetReport = function(id) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Budget_Report_${end.toISOString().slice(0, 10)}.txt`;
+    a.download = `Budget_Report_${FinzCore.localDateKey(end)}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1168,7 +1193,7 @@ actions.downloadBudgetReportPDF = function(id) {
             doc.text(`Page ${i} of ${pageCount}`, 196, 290, { align: 'right' });
         }
 
-        doc.save(`FINZ_Budget_Report_${end.toISOString().split('T')[0]}.pdf`);
+        doc.save(`FINZ_Budget_Report_${FinzCore.localDateKey(end)}.pdf`);
         actions.showToast("Executive PDF Report Generated!", "success");
     } catch (err) {
         console.error("PDF generation failed", err);
@@ -1181,18 +1206,20 @@ actions.showCategoryDetails = function(cat) {
                   .sort((a,b) => new Date(b.date) - new Date(a.date));
                   
     const stats = actions.getEnvelopeStats().categories[cat] || { funded: 0, spent: 0, available: 0 };
+    const envelopeHistory = (state.data.envelopeLedger || []).filter(e => e.category === cat)
+                               .sort((a,b) => new Date(b.date) - new Date(a.date));
 
     let content = FinzUI.html`
-        <div class="max-w-4xl mx-auto bg-slate-800/95 backdrop-blur-xl p-8 rounded-[2.5rem] border border-slate-700 shadow-2xl h-[85vh] flex flex-col fade-in">
+        <div class="max-w-4xl mx-auto bg-slate-800/95 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] border border-slate-700 shadow-2xl h-[85vh] flex flex-col fade-in">
             <div class="flex justify-between items-center mb-6">
                 <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="p-2.5 bg-slate-700/50 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
                 <h2 class="text-xl font-black text-white uppercase tracking-widest">${cat}</h2>
                 <div class="w-10"></div>
             </div>
             
-            <div class="bg-slate-900/90 border border-slate-700/80 rounded-[2rem] p-6 mb-6 text-center shadow-inner">
+            <div class="bg-slate-900/90 border border-slate-700/80 rounded-[2rem] p-6 mb-4 text-center shadow-inner">
                 <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Available Balance</p>
-                <h3 class="text-3xl font-black ${stats.available < 0 ? 'text-rose-400' : 'text-emerald-400'} num-font mb-4">AED ${stats.available.toLocaleString()}</h3>
+                <h3 class="text-3xl font-black ${stats.available < 0 ? 'text-rose-400' : 'text-emerald-400'} num-font mb-4">AED ${stats.available.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
                 
                 <div class="flex justify-between border-t border-slate-800 pt-4 px-2">
                     <div>
@@ -1205,34 +1232,77 @@ actions.showCategoryDetails = function(cat) {
                     </div>
                 </div>
             </div>
-            
-            <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2"><i data-lucide="history" class="w-3.5 h-3.5"></i> Activity Log</h4>
-            <div class="flex-1 overflow-auto pr-2 space-y-3 custom-scrollbar">
-    `;
 
-    if (txs.length === 0) {
-        content += FinzUI.html`<p class="text-xs font-bold text-slate-400 text-center mt-10">No activity yet for this category.</p>`;
-    } else {
-        txs.forEach(t => {
-            const acc = state.data.accounts.find(a => a.id === t.accountId);
-            const cur = t.currency || (acc ? acc.currency : 'AED');
-            const baseAmt = actions.getTransactionBaseAmount(t);
-            const isNonBase = cur !== 'AED';
-            content += FinzUI.html`
-                <div class="flex justify-between items-center p-4 bg-slate-900/60 rounded-2xl border border-slate-700/70 shadow-sm hover:border-slate-600 transition-all">
-                    <div class="text-left">
-                        <p class="text-xs font-black text-white">${t.note || 'Expense'}</p>
-                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} • ${acc ? acc.name : ''}${isNonBase ? ` • Native: ${cur} ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}</p>
+            <!-- Quick Action Toolbar -->
+            <div class="flex flex-wrap gap-2 mb-6 justify-center">
+                <button data-finz-click="${FinzUI.handler(function(event) { return actions.openEditCategoryBudget(((cat))) })}" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs uppercase px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i> Edit Budget / Reallocate
+                </button>
+                <button data-finz-click="${FinzUI.handler(function(event) { return actions.openBudgetTransferModal(((cat))) })}" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-slate-700 flex items-center gap-2 transition-all">
+                    <i data-lucide="arrow-right-left" class="w-4 h-4 text-sky-400"></i> Move Funds
+                </button>
+                <button data-finz-click="${FinzUI.handler(function(event) { return actions.promptFundCategory(((cat))) })}" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-slate-700 flex items-center gap-2 transition-all">
+                    <i data-lucide="plus" class="w-4 h-4 text-emerald-400"></i> Add Funds
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-auto pr-2 space-y-6 custom-scrollbar">
+                <!-- Envelope Allocation History -->
+                ${envelopeHistory.length > 0 ? FinzUI.html`
+                    <div>
+                        <div class="flex justify-between items-center mb-3 px-1">
+                            <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                                <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-400"></i> Envelope Allocations (${envelopeHistory.length})
+                            </h4>
+                            <span class="text-[9px] font-bold text-slate-500">Delete mistakes to restore cash</span>
+                        </div>
+                        <div class="space-y-2">
+                            ${envelopeHistory.map(e => FinzUI.html`
+                                <div class="flex justify-between items-center p-3 bg-slate-900/80 rounded-2xl border border-slate-700/60 text-xs">
+                                    <div class="flex items-center gap-2.5">
+                                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${e.type === 'fund' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}">
+                                            ${e.type === 'fund' ? '+ Funded' : '- Defunded'}
+                                        </span>
+                                        <span class="font-black text-white num-font">AED ${e.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span class="text-[10px] text-slate-400 font-bold">${new Date(e.date).toLocaleDateString()}</span>
+                                    </div>
+                                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.deleteEnvelopeLedgerEntry(((e.id)), ((cat))) })}" title="Delete this entry (reverses this allocation)" class="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-all">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-sm font-black text-rose-400 num-font">- AED ${baseAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                ` : ''}
+
+                <!-- Activity Log (Expenses / Spending) -->
+                <div>
+                    <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 px-1 flex items-center gap-2">
+                        <i data-lucide="history" class="w-3.5 h-3.5"></i> Activity Log (${txs.length})
+                    </h4>
+                    <div class="space-y-3">
+                        ${txs.length === 0 ? FinzUI.literal('<p class="text-xs font-bold text-slate-500 text-center py-6 bg-slate-900/40 rounded-2xl">No transaction activity yet for this category.</p>') : txs.map(t => {
+                            const acc = state.data.accounts.find(a => a.id === t.accountId);
+                            const cur = t.currency || (acc ? acc.currency : 'AED');
+                            const baseAmt = actions.getTransactionBaseAmount(t);
+                            const isNonBase = cur !== 'AED';
+                            return FinzUI.html`
+                                <div class="flex justify-between items-center p-4 bg-slate-900/60 rounded-2xl border border-slate-700/70 shadow-sm hover:border-slate-600 transition-all">
+                                    <div class="text-left">
+                                        <p class="text-xs font-black text-white">${t.note || 'Expense'}</p>
+                                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1">${new Date(t.date).toLocaleDateString()} • ${acc ? acc.name : ''}${isNonBase ? ` • Native: ${cur} ${Number(t.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : ''}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-sm font-black text-rose-400 num-font">- AED ${baseAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 </div>
-            `;
-        });
-    }
-
-    content += FinzUI.html`</div></div>`;
+            </div>
+        </div>
+    `;
     
     FinzUI.setHTML(document.getElementById('modal-content'), content);
     lucide.createIcons();
@@ -1428,9 +1498,10 @@ actions.renderStreakDetailsModal = function() {
     
     const spendDays = {};
     txs.forEach(t => {
-        const dStr = new Date(t.date).toISOString().split('T')[0];
+        const dStr = FinzCore.localDateKey(t.date);
+        if (!dStr) return;
         if (!spendDays[dStr]) spendDays[dStr] = 0;
-        spendDays[dStr] += t.amount;
+        spendDays[dStr] += actions.getTransactionBaseAmount(t);
     });
 
     if (txs.length > 0) {
@@ -1439,7 +1510,7 @@ actions.renderStreakDetailsModal = function() {
         
         let curr = new Date(firstTxDate);
         while (curr <= now) {
-            const dStr = curr.toISOString().split('T')[0];
+            const dStr = FinzCore.localDateKey(curr);
             if (spendDays[dStr]) {
                 lastBrokenDate = dStr;
                 tempStreak = 0;
@@ -1456,7 +1527,7 @@ actions.renderStreakDetailsModal = function() {
     for (let i = 0; i < 14; i++) {
         const d = new Date(today);
         d.setDate(d.getDate() - i);
-        const dStr = d.toISOString().split('T')[0];
+        const dStr = FinzCore.localDateKey(d);
         last14Days.push({
             dateStr: dStr,
             display: d.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}),
@@ -1559,6 +1630,20 @@ actions.renderBudgetUIOverride = function () {
     const hasTemplate = !!state.data?.budgetTemplate && Object.keys(state.data.budgetTemplate).length > 0;
     const templateSum = hasTemplate ? Object.values(state.data.budgetTemplate).reduce((s, v) => s + v, 0) : 0;
 
+    // Detect orphaned/inactive envelopes that still hold funds in the ledger
+    const allRegisteredCats = actions.getAllBudgetCategories();
+    const orphanEnvelopes = [];
+    Object.keys(stats.categories).forEach(cat => {
+        if (!allRegisteredCats.includes(cat) && Math.abs(stats.categories[cat].funded) > 0.005) {
+            orphanEnvelopes.push({
+                name: cat,
+                funded: stats.categories[cat].funded,
+                spent: stats.categories[cat].spent,
+                available: stats.categories[cat].available
+            });
+        }
+    });
+
     // Update modal title to be clean
     const modalTitle = document.getElementById('modal-title');
     if (modalTitle) modalTitle.innerText = 'Monthly Budgeting Hub';
@@ -1580,12 +1665,34 @@ actions.renderBudgetUIOverride = function () {
                         <h2 class="text-4xl md:text-5xl font-black ${hasUnallocated ? 'text-emerald-400' : 'text-white'} num-font mt-2">AED ${stats.unallocatedCash.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h2>
                         <p class="text-xs font-bold text-slate-400 mt-1">Unallocated cash remaining from current paycheck</p>
                         
+                        <div class="flex flex-wrap items-center gap-2 mt-2 justify-center lg:justify-start">
+                            <span class="text-xs text-slate-400 font-bold">Cycle Income: <span class="text-white num-font font-black">AED ${stats.totalCredit.toLocaleString()}</span></span>
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openAdjustBudgetCredit() })}" title="Adjust starting paycheck income or fix balance mismatch" class="text-emerald-400 hover:text-emerald-300 text-[11px] font-black uppercase tracking-wider flex items-center gap-1 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 transition-all">
+                                <i data-lucide="edit-2" class="w-3 h-3"></i> Adjust Income
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openReconcileBudgetModal() })}" title="Compare budget allocations with real liquid bank balance" class="text-sky-400 hover:text-sky-300 text-[11px] font-black uppercase tracking-wider flex items-center gap-1 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-0.5 rounded-lg border border-sky-500/30 transition-all">
+                                <i data-lucide="scale" class="w-3 h-3"></i> Reconcile Bank
+                            </button>
+                        </div>
+                        
                         <div class="flex flex-wrap gap-2.5 mt-5 justify-center lg:justify-start">
                             ${hasTemplate && hasUnallocated ? FinzUI.html`
                                 <button data-finz-click="${FinzUI.handler(function(event) { return actions.applyBudgetTemplate() })}" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20">
                                     <i data-lucide="zap" class="w-4 h-4"></i> 1-Click Auto-Fund (AED ${templateSum.toLocaleString()})
                                 </button>
                             ` : ''}
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openBulkBudgetEditor() })}" title="Edit and adjust all envelope budgets on one screen" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md">
+                                <i data-lucide="sliders" class="w-4 h-4 text-emerald-400"></i> Edit All Allocations
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openBudgetTransferModal() })}" title="Transfer funds between envelopes or unallocated cash" class="bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md">
+                                <i data-lucide="arrow-right-left" class="w-4 h-4 text-sky-400"></i> Transfer Between Envelopes
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openAdjustBudgetCredit() })}" title="Adjust the starting paycheck income of this budget cycle" class="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5">
+                                <i data-lucide="sliders-horizontal" class="w-4 h-4 text-emerald-400"></i> Adjust Income
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openReconcileBudgetModal() })}" title="Compare envelope allocations with real bank account balances" class="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5">
+                                <i data-lucide="scale" class="w-4 h-4 text-indigo-400"></i> Reconcile Bank
+                            </button>
                             <button data-finz-click="${FinzUI.handler(function(event) { return actions.saveBudgetAsTemplate() })}" title="Save current envelope plan as default monthly template" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 border border-slate-700">
                                 <i data-lucide="bookmark" class="w-4 h-4 text-emerald-400"></i> ${hasTemplate ? 'Update Template' : 'Save as Template'}
                             </button>
@@ -1629,6 +1736,44 @@ actions.renderBudgetUIOverride = function () {
                     </div>
                 </div>
             </div>
+
+            <!-- INACTIVE / DELETED ENVELOPE RECOVERY BANNER -->
+            ${orphanEnvelopes.length > 0 ? FinzUI.html`
+                <div class="bg-amber-500/10 border border-amber-500/30 p-5 rounded-3xl text-left space-y-3 shadow-lg shadow-amber-500/5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-black text-white uppercase tracking-wider">Deleted / Inactive Envelopes with Funds Detected</h4>
+                                <p class="text-xs text-amber-200/90 font-medium">An envelope category was deleted, but still has allocations tied to it in the ledger. You can restore the envelope or release its money back to Unallocated Cash.</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-black text-amber-300 bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30 shrink-0">${orphanEnvelopes.length} Detected</span>
+                    </div>
+
+                    <div class="space-y-2 pt-1">
+                        ${orphanEnvelopes.map(o => FinzUI.html`
+                            <div class="flex flex-wrap items-center justify-between p-3.5 bg-slate-900/80 rounded-2xl border border-slate-700/60 text-xs gap-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="font-black text-white uppercase text-sm">${o.name}</span>
+                                    <span class="text-slate-400 font-bold">Allocated: <span class="text-amber-400 num-font font-black">AED ${o.funded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                                    ${o.spent > 0 ? FinzUI.html`<span class="text-slate-400 font-bold">• Spent: <span class="text-slate-300 num-font font-bold">AED ${o.spent.toLocaleString()}</span></span>` : ''}
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.restoreDeletedCategory(((o.name))) })}" class="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl transition-all flex items-center gap-1.5 shadow-sm">
+                                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Restore Envelope
+                                    </button>
+                                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.cleanOrphanEnvelopeFunds(((o.name))) })}" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1.5">
+                                        <i data-lucide="arrow-down-circle" class="w-3.5 h-3.5 text-amber-400"></i> Release Funds
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
     `;
 
     // 1. Render Living Expense Card (Spacious Grid Box with Cover Shortfall Button)
@@ -1680,16 +1825,21 @@ actions.renderBudgetUIOverride = function () {
                 </div>
 
                 <div>
-                    <!-- Bottom Row: Chips + Add Fund Button -->
+                    <!-- Bottom Row: Chips + Edit & Add Buttons -->
                     <div class="flex justify-between items-center pt-3 border-t border-slate-700/50">
-                        <div class="text-[9px] font-bold text-slate-400 space-y-0.5">
-                            <p>Funded: <span class="text-slate-200 font-black">AED ${cStats.funded.toLocaleString()}</span></p>
+                        <div class="text-[9px] font-bold text-slate-400 space-y-0.5 cursor-pointer hover:text-white transition-colors" data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openEditCategoryBudget(((cat))) })}" title="Click to edit budget allocation">
+                            <p>Funded: <span class="text-slate-200 font-black">AED ${cStats.funded.toLocaleString()}</span> <i data-lucide="edit-2" class="w-2.5 h-2.5 inline text-rose-400/80 ml-0.5"></i></p>
                             <p>Spent: <span class="${cStats.spent > 0 ? 'text-rose-400' : 'text-slate-300'} font-black">AED ${cStats.spent.toLocaleString()}</span></p>
                         </div>
                         
-                        <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.promptFundCategory(((cat))) })}" title="Assign / Add Funds" class="bg-rose-600 hover:bg-rose-500 text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md shadow-rose-600/30 shrink-0">
-                            <i data-lucide="plus" class="w-4 h-4"></i>
-                        </button>
+                        <div class="flex items-center gap-1.5 shrink-0" data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation() })}">
+                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openEditCategoryBudget(((cat))) })}" title="Edit Budget / Reallocate" class="bg-slate-700/80 hover:bg-slate-600 text-slate-200 hover:text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.promptFundCategory(((cat))) })}" title="Assign / Add Funds" class="bg-rose-600 hover:bg-rose-500 text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md shadow-rose-600/30 shrink-0">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Progress Bar -->
@@ -1749,16 +1899,21 @@ actions.renderBudgetUIOverride = function () {
                 </div>
 
                 <div>
-                    <!-- Bottom Row: Chips + Add Fund Button -->
+                    <!-- Bottom Row: Chips + Edit & Add Buttons -->
                     <div class="flex justify-between items-center pt-3 border-t border-slate-700/50">
-                        <div class="text-[9px] font-bold text-slate-400 space-y-0.5">
-                            <p>Target: <span class="text-slate-200 font-black">AED ${cStats.funded.toLocaleString()}</span></p>
+                        <div class="text-[9px] font-bold text-slate-400 space-y-0.5 cursor-pointer hover:text-white transition-colors" data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openEditCategoryBudget(((cat))) })}" title="Click to edit target allocation">
+                            <p>Target: <span class="text-slate-200 font-black">AED ${cStats.funded.toLocaleString()}</span> <i data-lucide="edit-2" class="w-2.5 h-2.5 inline text-emerald-400/80 ml-0.5"></i></p>
                             <p>Moved: <span class="text-emerald-400 font-black">AED ${savedAmount.toLocaleString()}</span></p>
                         </div>
                         
-                        <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.promptFundCategory(((cat))) })}" title="Assign / Add Funds" class="bg-emerald-600 hover:bg-emerald-500 text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md shadow-emerald-600/30 shrink-0">
-                            <i data-lucide="plus" class="w-4 h-4"></i>
-                        </button>
+                        <div class="flex items-center gap-1.5 shrink-0" data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation() })}">
+                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openEditCategoryBudget(((cat))) })}" title="Edit Target / Reallocate" class="bg-slate-700/80 hover:bg-slate-600 text-slate-200 hover:text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.promptFundCategory(((cat))) })}" title="Assign / Add Funds" class="bg-emerald-600 hover:bg-emerald-500 text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md shadow-emerald-600/30 shrink-0">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Progress Bar -->
@@ -1818,16 +1973,21 @@ actions.renderBudgetUIOverride = function () {
                 </div>
 
                 <div>
-                    <!-- Bottom Row: Chips + Add Fund Button -->
+                    <!-- Bottom Row: Chips + Edit & Add Buttons -->
                     <div class="flex justify-between items-center pt-3 border-t border-slate-700/50">
-                        <div class="text-[9px] font-bold text-slate-400 space-y-0.5">
-                            <p>Target: <span class="text-slate-200 font-black">AED ${cStats.funded.toLocaleString()}</span></p>
+                        <div class="text-[9px] font-bold text-slate-400 space-y-0.5 cursor-pointer hover:text-white transition-colors" data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openEditCategoryBudget(((cat))) })}" title="Click to edit target allocation">
+                            <p>Target: <span class="text-slate-200 font-black">AED ${cStats.funded.toLocaleString()}</span> <i data-lucide="edit-2" class="w-2.5 h-2.5 inline text-indigo-400/80 ml-0.5"></i></p>
                             <p>Invested: <span class="text-indigo-400 font-black">AED ${investedAmount.toLocaleString()}</span></p>
                         </div>
                         
-                        <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.promptFundCategory(((cat))) })}" title="Assign / Add Funds" class="bg-indigo-600 hover:bg-indigo-500 text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-indigo-600/30 shrink-0">
-                            <i data-lucide="plus" class="w-4 h-4"></i>
-                        </button>
+                        <div class="flex items-center gap-1.5 shrink-0" data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation() })}">
+                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openEditCategoryBudget(((cat))) })}" title="Edit Target / Reallocate" class="bg-slate-700/80 hover:bg-slate-600 text-slate-200 hover:text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-md">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.promptFundCategory(((cat))) })}" title="Assign / Add Funds" class="bg-indigo-600 hover:bg-indigo-500 text-white w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-indigo-600/30 shrink-0">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Progress Bar -->
@@ -1950,22 +2110,10 @@ actions.getFinancialRunwayStats = function () {
     const liquidAccs = state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type));
     const liquidTotalAED = liquidAccs.reduce((sum, a) => sum + (a.currency === 'AED' ? Number(a.balance) : Number(a.balance) / r), 0);
     
-    // Average Monthly Burn over last 90 days
-    const now = new Date();
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(now.getDate() - 90);
-    
-    const recentExpenses = state.data.transactions.filter(t => (t.type === 'expense' || t.type === 'transfer_out') && new Date(t.date) >= ninetyDaysAgo);
-    
-    let totalSpentAED = 0;
-    recentExpenses.forEach(t => {
-        const acc = state.data.accounts.find(a => a.id === t.accountId);
-        const cur = acc ? acc.currency : 'AED';
-        totalSpentAED += (cur === 'AED' ? Number(t.amount) : Number(t.amount) / r);
-    });
-    
-    // Monthly burn rate (average per month)
-    const monthlyBurnAED = totalSpentAED > 0 ? (totalSpentAED / 3) : (liquidTotalAED > 0 ? liquidTotalAED / 6 : 4500);
+    // Average monthly spending over the last 3 months of real history.
+    // Transfers to your own savings/investments are not spending.
+    const measuredBurn = FinzCore.monthlyBurn(state.data);
+    const monthlyBurnAED = measuredBurn > 0 ? measuredBurn : (liquidTotalAED > 0 ? liquidTotalAED / 6 : 4500);
     const runwayMonths = monthlyBurnAED > 0 ? (liquidTotalAED / monthlyBurnAED).toFixed(1) : '∞';
     
     return {
@@ -2038,17 +2186,40 @@ actions.refreshCategoryManager = function() {
 actions.deleteCategory = async function(cat) {
     if (!confirm(`Are you sure you want to delete "${cat}"?`)) return;
     
+    const stats = (typeof actions.getEnvelopeStats === 'function') ? actions.getEnvelopeStats() : null;
+    const catFunded = stats?.categories[cat]?.funded || 0;
+
     const keys = ['expenseCategories', 'savingsCategories', 'investmentCategories', 'incomeCategories'];
     keys.forEach(k => {
         if (state.data[k]) {
             state.data[k] = state.data[k].filter(c => c !== cat);
         }
     });
+
+    // Auto-release active funds so they don't get trapped as orphaned entries in the envelope ledger
+    if (catFunded > 0.005) {
+        state.data.envelopeLedger = state.data.envelopeLedger || [];
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date: new Date().toISOString(),
+            type: 'defund',
+            category: cat,
+            amount: catFunded,
+            note: 'Auto-defund on category deletion'
+        });
+    }
+
+    if (state.data.budgetTemplate && state.data.budgetTemplate[cat] !== undefined) {
+        delete state.data.budgetTemplate[cat];
+    }
+    if (state.data.budgets && state.data.budgets[cat] !== undefined) {
+        delete state.data.budgets[cat];
+    }
     
     await actions.updateDb();
     actions.renderApp();
     actions.refreshCategoryManager();
-    actions.showToast(`Deleted "${cat}"`, "success");
+    actions.showToast(`Deleted "${cat}"${catFunded > 0.005 ? ` and returned AED ${catFunded.toLocaleString()} to Unallocated Cash` : ''}`, "success");
 };
 
 actions.delWizardCategory = (cat) => actions.deleteCategory(cat);
@@ -2091,7 +2262,8 @@ actions.addWizardCategory = async function () {
     const type = typeSelect ? typeSelect.value : 'expenseCategories';
     if (!state.data[type]) state.data[type] = [];
     
-    if (!state.data[type].includes(val)) {
+    const allCats = actions.getAllBudgetCategories().map(c => c.toLowerCase()); // One pillar per category
+    if (!allCats.includes(val.toLowerCase())) {
         state.data[type].push(val);
         await actions.updateDb();
         actions.renderApp();
@@ -2343,7 +2515,11 @@ actions.openCoverOverspending = function(targetCat, deficit) {
 actions.executeCoverOverspending = async function(targetCat) {
     const src = document.getElementById('cover-source')?.value;
     const amt = parseFloat(document.getElementById('cover-amount')?.value) || 0;
-    if (amt <= 0) return;
+    if (amt <= 0) return actions.showToast('Enter an amount greater than zero.', 'error');
+    // Never move more than the source actually holds (that would just push the deficit elsewhere).
+    const stats = actions.getEnvelopeStats();
+    const available = src === '__unallocated__' ? stats.unallocatedCash : (stats.categories[src]?.available || 0);
+    if (amt > available + 0.005) return actions.showToast(`Only AED ${Math.max(0, available).toLocaleString(undefined, { maximumFractionDigits: 2 })} is available in that source.`, 'error');
     
     const date = new Date().toISOString();
     
@@ -2377,13 +2553,1041 @@ actions.executeCoverOverspending = async function(targetCat) {
     actions.showToast(`Covered AED ${amt.toLocaleString()} for ${targetCat}!`, "success");
 };
 
+actions.setMoveBudgetAmount = function(amt) {
+    const input = document.getElementById('move-cat-amount');
+    if (input) input.value = amt;
+};
+
+actions.setModalTransferAmount = function(amt) {
+    const input = document.getElementById('modal-transfer-amt');
+    if (input) input.value = amt;
+};
+
+actions.calcCategoryEditDiff = function(cat, origFunded, unallocated) {
+    const input = document.getElementById('edit-cat-amount');
+    const preview = document.getElementById('edit-cat-preview');
+    if (!input || !preview) return;
+    const val = parseFloat(input.value);
+    if (isNaN(val) || val < 0) {
+        FinzUI.setHTML(preview, FinzUI.html`<p class="text-xs font-bold text-rose-400">Please enter a valid amount (0 or more).</p>`);
+        return;
+    }
+    const diff = val - origFunded;
+    if (Math.abs(diff) < 0.005) {
+        FinzUI.setHTML(preview, FinzUI.html`<p class="text-xs font-bold text-slate-400">No change to current allocation (AED ${origFunded.toLocaleString()}).</p>`);
+    } else if (diff < 0) {
+        const freed = Math.abs(diff);
+        const newUnallocated = unallocated + freed;
+        FinzUI.setHTML(preview, FinzUI.html`<p class="text-xs font-bold text-emerald-400 flex items-center gap-1.5"><i data-lucide="arrow-down-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i> Decreasing by AED ${freed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — this will return AED ${freed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} back to Unallocated Cash (New unallocated: AED ${newUnallocated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).</p>`);
+    } else {
+        const needed = diff;
+        const newUnallocated = unallocated - needed;
+        if (needed > unallocated + 0.005) {
+            FinzUI.setHTML(preview, FinzUI.html`<p class="text-xs font-bold text-rose-400 flex items-center gap-1.5"><i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400 shrink-0"></i> Needs AED ${needed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, but only AED ${unallocated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unallocated cash is available (short by AED ${(needed - unallocated).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).</p>`);
+        } else {
+            FinzUI.setHTML(preview, FinzUI.html`<p class="text-xs font-bold text-indigo-300 flex items-center gap-1.5"><i data-lucide="arrow-up-circle" class="w-4 h-4 text-indigo-400 shrink-0"></i> Increasing by AED ${needed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — remaining unallocated cash will be AED ${newUnallocated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.</p>`);
+        }
+    }
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
+
+actions.openEditCategoryBudget = function(cat) {
+    const stats = actions.getEnvelopeStats();
+    const cStat = stats.categories[cat] || { funded: 0, spent: 0, available: 0 };
+    const currentFunded = cStat.funded || 0;
+    const currentAvailable = cStat.available || 0;
+    const currentSpent = cStat.spent || 0;
+    const unallocated = stats.unallocatedCash || 0;
+    const pillar = actions.getCategoryPillar(cat);
+    const hasTemplate = !!(state.data.budgetTemplate && state.data.budgetTemplate[cat] !== undefined);
+
+    const expenseCats = (state.data.expenseCategories || []).filter(c => c !== cat);
+    const savingsCats = (state.data.savingsCategories || []).filter(c => c !== cat);
+    const investCats = (state.data.investmentCategories || []).filter(c => c !== cat);
+
+    let destOptions = '';
+    // Place savings options first so users transferring mistake funds can immediately target savings!
+    if (savingsCats.length > 0) {
+        destOptions += FinzUI.html`<optgroup label="🛡️ Savings & Sinking Funds">${savingsCats.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')}</optgroup>`;
+    }
+    if (investCats.length > 0) {
+        destOptions += FinzUI.html`<optgroup label="📈 Investments">${investCats.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')}</optgroup>`;
+    }
+    if (expenseCats.length > 0) {
+        destOptions += FinzUI.html`<optgroup label="🛒 Living Expenses">${expenseCats.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')}</optgroup>`;
+    }
+
+    const envelopeHistory = (state.data.envelopeLedger || []).filter(e => e.category === cat)
+                               .sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    const pillarBadge = pillar === 'savings'
+        ? FinzUI.html`<span class="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1"><i data-lucide="shield" class="w-3 h-3"></i> Savings & Sinking Fund</span>`
+        : pillar === 'investment'
+            ? FinzUI.html`<span class="text-[9px] font-black uppercase text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/30 flex items-center gap-1"><i data-lucide="trending-up" class="w-3 h-3"></i> Investment & Wealth</span>`
+            : FinzUI.html`<span class="text-[9px] font-black uppercase text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/30 flex items-center gap-1"><i data-lucide="shopping-bag" class="w-3 h-3"></i> Living Expense</span>`;
+
+    const c = document.getElementById('modal-content');
+    const titleEl = document.getElementById('modal-title');
+    if (titleEl) titleEl.innerText = 'Edit Envelope Budget';
+
+    FinzUI.setHTML(c, FinzUI.html`
+        <div class="max-w-4xl mx-auto space-y-6 text-left fade-in pb-16">
+            <!-- Header bar with category title -->
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div class="flex items-center gap-3">
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all">
+                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    </button>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-xl font-black text-white uppercase tracking-wider">${cat}</h3>
+                            ${pillarBadge}
+                        </div>
+                        <p class="text-xs text-slate-400 font-bold">Adjust allocation amount, move funds between envelopes, or view history</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Overview Balances Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 text-center">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Currently Allocated</p>
+                    <p class="text-lg font-black text-white num-font mt-0.5">AED ${currentFunded.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/60 text-center">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Spent / Used</p>
+                    <p class="text-lg font-black text-slate-300 num-font mt-0.5">AED ${currentSpent.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border ${currentAvailable < 0 ? 'border-rose-500/40 bg-rose-500/5' : 'border-emerald-500/40 bg-emerald-500/5'} text-center">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">${currentAvailable < 0 ? 'Deficit' : 'Available Balance'}</p>
+                    <p class="text-lg font-black ${currentAvailable < 0 ? 'text-rose-400' : 'text-emerald-400'} num-font mt-0.5">AED ${currentAvailable.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-indigo-500/40 bg-indigo-500/5 text-center">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Unallocated Cash</p>
+                    <p class="text-lg font-black text-indigo-400 num-font mt-0.5">AED ${unallocated.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+            </div>
+
+            <!-- Main Interactive Controls: 2 Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- CARD 1: Direct Budget Allocation (Edit Target) -->
+                <div class="bg-slate-800/90 p-6 rounded-[2rem] border border-slate-700/80 shadow-xl space-y-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </div>
+                            <h4 class="text-sm font-black uppercase text-white tracking-wider">Set Exact Allocation</h4>
+                        </div>
+                        <p class="text-xs text-slate-400 font-bold mb-4">Type the new desired total budget amount for this month. Decreasing frees money back to Unallocated Cash; increasing takes from Unallocated Cash.</p>
+
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">New Total Budget (AED)</label>
+                                <input type="number" id="edit-cat-amount" value="${currentFunded}" min="0" step="any" class="w-full p-4 bg-slate-900 border border-slate-700 rounded-2xl text-white font-black text-2xl outline-none focus:border-emerald-500 num-font" data-finz-input="${FinzUI.handler(function(event) { return actions.calcCategoryEditDiff(((cat)), ((currentFunded)), ((unallocated))) })}">
+                            </div>
+
+                            <div id="edit-cat-preview" class="p-3 bg-slate-900/60 rounded-xl border border-slate-700/60 min-h-[3rem] flex items-center">
+                                <p class="text-xs font-bold text-slate-400">Current allocation: AED ${currentFunded.toLocaleString()}. Change amount above to adjust.</p>
+                            </div>
+
+                            <div class="flex items-center gap-2 pt-1">
+                                <input type="checkbox" id="edit-cat-sync-template" ${hasTemplate ? 'checked' : ''} class="w-4 h-4 rounded accent-emerald-500 cursor-pointer">
+                                <label for="edit-cat-sync-template" class="text-xs font-bold text-slate-300 cursor-pointer">Also update my Standard Monthly Template</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 pt-2">
+                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.saveCategoryBudgetAllocation(((cat))) })}" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black uppercase text-xs tracking-wider py-4 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="check" class="w-4 h-4"></i> Save New Allocation
+                        </button>
+                        ${currentFunded > 0 ? FinzUI.html`
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.resetCategoryAllocation(((cat))) })}" class="w-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-black uppercase py-3 rounded-2xl transition-all flex items-center justify-center gap-1.5">
+                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Clear Allocation (Release AED ${currentFunded.toLocaleString()} to Unallocated)
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- CARD 2: Move Funds to Another Envelope (User's Exact Issue!) -->
+                <div class="bg-slate-800/90 p-6 rounded-[2rem] border border-slate-700/80 shadow-xl space-y-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                                <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
+                            </div>
+                            <h4 class="text-sm font-black uppercase text-white tracking-wider">Move to Another Envelope</h4>
+                        </div>
+                        <p class="text-xs text-slate-400 font-bold mb-4">Mistakenly funded the wrong category? Transfer funds directly from <span class="text-white font-extrabold">${cat}</span> to another envelope without affecting bank accounts.</p>
+
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Destination Envelope</label>
+                                <select id="move-cat-dest" class="w-full p-3.5 bg-slate-900 border border-slate-700 rounded-2xl text-white font-bold text-sm outline-none focus:border-indigo-500">
+                                    ${destOptions || FinzUI.html`<option value="">No other categories available</option>`}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Amount to Move (AED)</label>
+                                <input type="number" id="move-cat-amount" value="${Math.max(0, currentAvailable)}" min="0" step="any" class="w-full p-4 bg-slate-900 border border-slate-700 rounded-2xl text-emerald-400 font-black text-2xl outline-none focus:border-indigo-500 num-font">
+                            </div>
+
+                            <!-- Quick preset pills -->
+                            <div class="flex flex-wrap gap-2 pt-1">
+                                <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setMoveBudgetAmount(50) })}" class="px-3 py-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-300">50</button>
+                                <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setMoveBudgetAmount(100) })}" class="px-3 py-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-300">100</button>
+                                <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setMoveBudgetAmount(250) })}" class="px-3 py-1 bg-slate-900 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-300">250</button>
+                                ${currentAvailable > 0 ? FinzUI.html`
+                                    <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setMoveBudgetAmount(((currentAvailable))) })}" class="px-3 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 rounded-lg text-xs font-black text-indigo-300">All Available (${currentAvailable.toLocaleString()})</button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-2">
+                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.executeBudgetTransfer(((cat))) })}" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-xs tracking-wider py-4 rounded-2xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="arrow-right-left" class="w-4 h-4"></i> Transfer Funds Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Envelope Ledger History -->
+            <div class="bg-slate-800/90 p-6 rounded-[2rem] border border-slate-700/80 shadow-xl space-y-4">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-700/60">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i>
+                        <h4 class="text-xs font-black uppercase text-white tracking-wider">Allocation Ledger History for ${cat}</h4>
+                    </div>
+                    <span class="text-[9px] font-bold text-slate-400">${envelopeHistory.length} entry/entries</span>
+                </div>
+
+                ${envelopeHistory.length === 0 ? FinzUI.html`
+                    <p class="text-xs font-bold text-slate-500 text-center py-6 bg-slate-900/40 rounded-2xl">No allocation entries yet for this envelope.</p>
+                ` : FinzUI.html`
+                    <div class="space-y-2">
+                        ${envelopeHistory.map(e => FinzUI.html`
+                            <div class="flex justify-between items-center p-3 bg-slate-900/70 rounded-2xl border border-slate-700/50 text-xs">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-[9px] font-black uppercase px-2.5 py-1 rounded-lg ${e.type === 'fund' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}">
+                                        ${e.type === 'fund' ? '+ Funded' : '- Defunded'}
+                                    </span>
+                                    <div>
+                                        <span class="font-black text-white num-font text-sm">AED ${e.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span class="text-[10px] text-slate-400 font-bold ml-2">${new Date(e.date).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                                <button data-finz-click="${FinzUI.handler(function(event) { return actions.deleteEnvelopeLedgerEntry(((e.id)), ((cat))) })}" title="Delete this entry (reverses this allocation)" class="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-all flex items-center gap-1 text-[10px] font-bold">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                `}
+            </div>
+        </div>
+    `);
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
+
+actions.saveCategoryBudgetAllocation = async function(cat) {
+    const input = document.getElementById('edit-cat-amount');
+    if (!input) return;
+    const newTarget = Math.max(0, parseFloat(input.value) || 0);
+    const stats = actions.getEnvelopeStats();
+    const currentFunded = stats.categories[cat]?.funded || 0;
+    const diff = newTarget - currentFunded;
+
+    if (Math.abs(diff) < 0.005) {
+        actions.showToast("No change in allocation.", "info");
+        actions.renderBudgetUIOverride();
+        return;
+    }
+
+    const date = new Date().toISOString();
+    state.data.envelopeLedger = state.data.envelopeLedger || [];
+
+    if (diff > 0) {
+        if (diff > stats.unallocatedCash + 0.005) {
+            actions.showToast(`Not enough unallocated cash! Available: AED ${stats.unallocatedCash.toLocaleString()}`, "error");
+            return;
+        }
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date,
+            type: 'fund',
+            category: cat,
+            amount: diff
+        });
+    } else {
+        const defundAmt = Math.abs(diff);
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date,
+            type: 'defund',
+            category: cat,
+            amount: defundAmt
+        });
+    }
+
+    const syncTemplate = document.getElementById('edit-cat-sync-template')?.checked;
+    if (syncTemplate) {
+        state.data.budgetTemplate = state.data.budgetTemplate || {};
+        if (newTarget > 0) state.data.budgetTemplate[cat] = newTarget;
+        else delete state.data.budgetTemplate[cat];
+    }
+    if (state.data.budgets && state.data.budgets[cat] !== undefined) {
+        state.data.budgets[cat] = newTarget;
+    }
+
+    await actions.updateDb();
+    actions.showToast(`Budget for ${cat} updated to AED ${newTarget.toLocaleString()}!`, "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.resetCategoryAllocation = async function(cat) {
+    const stats = actions.getEnvelopeStats();
+    const currentFunded = stats.categories[cat]?.funded || 0;
+    if (currentFunded <= 0) {
+        actions.showToast(`${cat} has no funds allocated.`, "info");
+        return;
+    }
+
+    actions.showConfirm(
+        "Clear Envelope Allocation",
+        `Are you sure you want to release all AED ${currentFunded.toLocaleString()} from ${cat} back to Unallocated Cash?`,
+        async () => {
+            state.data.envelopeLedger = state.data.envelopeLedger || [];
+            state.data.envelopeLedger.push({
+                id: actions.genId(),
+                date: new Date().toISOString(),
+                type: 'defund',
+                category: cat,
+                amount: currentFunded
+            });
+
+            if (state.data.budgetTemplate && state.data.budgetTemplate[cat] !== undefined) {
+                delete state.data.budgetTemplate[cat];
+            }
+            if (state.data.budgets && state.data.budgets[cat] !== undefined) {
+                state.data.budgets[cat] = 0;
+            }
+
+            await actions.updateDb();
+            actions.showToast(`Released AED ${currentFunded.toLocaleString()} from ${cat} back to Unallocated Cash!`, "success");
+            actions.renderBudgetUIOverride();
+        }
+    );
+};
+
+actions.executeBudgetTransfer = async function(sourceCat) {
+    const dest = document.getElementById('move-cat-dest')?.value;
+    const amt = parseFloat(document.getElementById('move-cat-amount')?.value) || 0;
+    if (!dest) return actions.showToast("Select a destination category.", "error");
+    if (dest === sourceCat) return actions.showToast("Source and destination categories must be different.", "error");
+    if (amt <= 0) return actions.showToast("Enter an amount greater than zero.", "error");
+
+    const stats = actions.getEnvelopeStats();
+    const available = stats.categories[sourceCat]?.available || 0;
+    if (amt > available + 0.005) {
+        return actions.showToast(`Only AED ${Math.max(0, available).toLocaleString(undefined, { maximumFractionDigits: 2 })} is available in ${sourceCat}.`, "error");
+    }
+
+    const date = new Date().toISOString();
+    state.data.envelopeLedger = state.data.envelopeLedger || [];
+
+    state.data.envelopeLedger.push({
+        id: actions.genId(),
+        date,
+        type: 'defund',
+        category: sourceCat,
+        amount: amt
+    });
+    state.data.envelopeLedger.push({
+        id: actions.genId(),
+        date,
+        type: 'fund',
+        category: dest,
+        amount: amt
+    });
+
+    await actions.updateDb();
+    actions.showToast(`Transferred AED ${amt.toLocaleString()} from ${sourceCat} to ${dest}!`, "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.deleteEnvelopeLedgerEntry = async function(entryId, cat) {
+    if (!state.data.envelopeLedger) return;
+    const entry = state.data.envelopeLedger.find(e => e.id === entryId);
+    if (!entry) return;
+
+    actions.showConfirm(
+        "Delete Allocation Entry",
+        `Delete this ${entry.type === 'fund' ? 'Funding' : 'Defunding'} entry of AED ${entry.amount.toLocaleString()} for ${entry.category}?\n\nThis will adjust your envelope balance and unallocated cash immediately.`,
+        async () => {
+            state.data.envelopeLedger = state.data.envelopeLedger.filter(e => e.id !== entryId);
+            await actions.updateDb();
+            actions.showToast(`Allocation entry deleted!`, "success");
+            if (cat) actions.openEditCategoryBudget(cat);
+            else actions.renderBudgetUIOverride();
+        }
+    );
+};
+
+actions.openBulkBudgetEditor = function() {
+    const stats = actions.getEnvelopeStats();
+    const totalAllocated = stats.totalFunded - stats.totalDefunded;
+    const c = document.getElementById('modal-content');
+    const titleEl = document.getElementById('modal-title');
+    if (titleEl) titleEl.innerText = 'Edit All Allocations';
+
+    const expenses = state.data.expenseCategories || [];
+    const savings = state.data.savingsCategories || [];
+    const investments = state.data.investmentCategories || [];
+
+    const renderPillarInputs = (title, icon, cats, colorClass) => {
+        if (cats.length === 0) return '';
+        return FinzUI.html`
+            <div class="bg-slate-800/80 p-5 rounded-[2rem] border border-slate-700/80 space-y-3">
+                <div class="flex items-center gap-2 pb-2 border-b border-slate-700/60">
+                    <span class="${colorClass} font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <i data-lucide="${icon}" class="w-4 h-4"></i> ${title}
+                    </span>
+                    <span class="text-[10px] font-bold text-slate-400">(${cats.length} envelopes)</span>
+                </div>
+                <div class="space-y-2.5">
+                    ${cats.map(cat => {
+                        const cStat = stats.categories[cat] || { funded: 0, spent: 0, available: 0 };
+                        return FinzUI.html`
+                            <div class="flex items-center justify-between p-3 bg-slate-900/70 rounded-2xl border border-slate-700/50 hover:border-slate-600 transition-all">
+                                <div class="text-left">
+                                    <p class="text-xs font-black text-white">${cat}</p>
+                                    <p class="text-[9px] font-bold text-slate-400">Spent: AED ${cStat.spent.toLocaleString()} • Available: AED ${cStat.available.toLocaleString()}</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] font-black text-slate-400">AED</span>
+                                    <input type="number" data-cat="${cat}" data-orig="${cStat.funded}" value="${cStat.funded}" min="0" step="any" class="bulk-budget-input w-28 md:w-36 text-right p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-black text-sm outline-none focus:border-emerald-500 num-font" data-finz-input="${FinzUI.handler(function(event) { return actions.calcBulkBudgetDiff() })}">
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    };
+
+    FinzUI.setHTML(c, FinzUI.html`
+        <div class="max-w-4xl mx-auto space-y-6 text-left fade-in pb-16">
+            <!-- Header bar -->
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div class="flex items-center gap-3">
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all">
+                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    </button>
+                    <div>
+                        <h3 class="text-xl font-black text-white">Bulk Budget Allocation Editor</h3>
+                        <p class="text-xs text-slate-400 font-bold">Review and adjust all monthly envelopes on a single screen</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Bar -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-800/90 p-4 rounded-2xl border border-slate-700/80 shadow-lg text-center">
+                <div>
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Total Paycheck Inflow</p>
+                    <p class="text-xl font-black text-white num-font mt-0.5">AED ${stats.totalCredit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div>
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Total Envelopes Allocated</p>
+                    <p id="bulk-total-alloc-val" class="text-xl font-black text-indigo-400 num-font mt-0.5">AED ${totalAllocated.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div>
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Remaining Unallocated</p>
+                    <p id="bulk-unallocated-val" class="text-xl font-black ${stats.unallocatedCash < 0 ? 'text-rose-400' : 'text-emerald-400'} num-font mt-0.5">AED ${stats.unallocatedCash.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+            </div>
+
+            <!-- Pillars 1, 2, 3 Lists -->
+            <div class="space-y-4">
+                ${renderPillarInputs('Living Expenses (Needs & Lifestyle)', 'shopping-bag', expenses, 'text-rose-400')}
+                ${renderPillarInputs('Savings & Sinking Funds (Future Goals)', 'shield', savings, 'text-emerald-400')}
+                ${renderPillarInputs('Investments & Wealth Growth', 'trending-up', investments, 'text-indigo-400')}
+            </div>
+
+            <!-- Actions footer -->
+            <div class="bg-slate-800/90 p-5 rounded-2xl border border-slate-700/80 space-y-3 sticky bottom-4 shadow-2xl backdrop-blur-md">
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="bulk-sync-template" ${state.data.budgetTemplate && Object.keys(state.data.budgetTemplate).length > 0 ? 'checked' : ''} class="w-4 h-4 rounded accent-emerald-500 cursor-pointer">
+                    <label for="bulk-sync-template" class="text-xs font-bold text-slate-300 cursor-pointer">Also save these targets as my Standard Monthly Template</label>
+                </div>
+                <div class="flex gap-3">
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.saveBulkBudgetAllocations() })}" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black uppercase text-xs tracking-wider py-4 rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="check" class="w-4 h-4"></i> Save All Allocations
+                    </button>
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="px-6 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold uppercase text-xs tracking-wider py-4 rounded-xl transition-all">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
+
+actions.calcBulkBudgetDiff = function() {
+    let totalAlloc = 0;
+    const stats = actions.getEnvelopeStats();
+    document.querySelectorAll('.bulk-budget-input').forEach(input => {
+        totalAlloc += Math.max(0, parseFloat(input.value) || 0);
+    });
+    const totalCredit = stats.totalCredit;
+    const remaining = totalCredit - totalAlloc;
+    const unallocatedEl = document.getElementById('bulk-unallocated-val');
+    const totalAllocEl = document.getElementById('bulk-total-alloc-val');
+    if (unallocatedEl) {
+        unallocatedEl.innerText = `AED ${remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        unallocatedEl.className = remaining < -0.005
+            ? 'text-xl font-black text-rose-400 num-font mt-0.5'
+            : 'text-xl font-black text-emerald-400 num-font mt-0.5';
+    }
+    if (totalAllocEl) {
+        totalAllocEl.innerText = `AED ${totalAlloc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+};
+
+actions.saveBulkBudgetAllocations = async function() {
+    const inputs = document.querySelectorAll('.bulk-budget-input');
+    const stats = actions.getEnvelopeStats();
+    let netChange = 0;
+    const changes = [];
+
+    inputs.forEach(input => {
+        const cat = input.getAttribute('data-cat');
+        const orig = parseFloat(input.getAttribute('data-orig')) || 0;
+        const val = Math.max(0, parseFloat(input.value) || 0);
+        const diff = val - orig;
+        if (Math.abs(diff) > 0.005) {
+            netChange += diff;
+            changes.push({ cat, orig, val, diff });
+        }
+    });
+
+    if (changes.length === 0) {
+        actions.showToast("No changes detected in allocations.", "info");
+        actions.renderBudgetUIOverride();
+        return;
+    }
+
+    if (netChange > stats.unallocatedCash + 0.005) {
+        actions.showToast(`Total increases exceed available unallocated cash by AED ${(netChange - stats.unallocatedCash).toLocaleString(undefined, { maximumFractionDigits: 2 })}!`, "error");
+        return;
+    }
+
+    const date = new Date().toISOString();
+    state.data.envelopeLedger = state.data.envelopeLedger || [];
+
+    changes.forEach(ch => {
+        if (ch.diff > 0) {
+            state.data.envelopeLedger.push({
+                id: actions.genId(),
+                date,
+                type: 'fund',
+                category: ch.cat,
+                amount: ch.diff
+            });
+        } else {
+            state.data.envelopeLedger.push({
+                id: actions.genId(),
+                date,
+                type: 'defund',
+                category: ch.cat,
+                amount: Math.abs(ch.diff)
+            });
+        }
+        if (state.data.budgets && state.data.budgets[ch.cat] !== undefined) {
+            state.data.budgets[ch.cat] = ch.val;
+        }
+    });
+
+    const syncTemplate = document.getElementById('bulk-sync-template')?.checked;
+    if (syncTemplate) {
+        state.data.budgetTemplate = state.data.budgetTemplate || {};
+        inputs.forEach(input => {
+            const cat = input.getAttribute('data-cat');
+            const val = Math.max(0, parseFloat(input.value) || 0);
+            if (val > 0) state.data.budgetTemplate[cat] = val;
+            else delete state.data.budgetTemplate[cat];
+        });
+    }
+
+    await actions.updateDb();
+    actions.showToast("All budget allocations updated successfully!", "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.openBudgetTransferModal = function(initialSource = '') {
+    const stats = actions.getEnvelopeStats();
+    const allCats = actions.getAllBudgetCategories();
+    const modalTitle = document.getElementById('modal-title');
+    if (modalTitle) modalTitle.innerText = 'Transfer Between Envelopes';
+    const c = document.getElementById('modal-content');
+    if (!c) return;
+
+    let sourceOptions = '';
+    if (stats.unallocatedCash > 0) {
+        sourceOptions += FinzUI.html`<option value="__unallocated__" ${initialSource === '__unallocated__' ? 'selected' : ''}>Unallocated Cash (Available: AED ${stats.unallocatedCash.toLocaleString()})</option>`;
+    }
+    allCats.forEach(cat => {
+        const cStat = stats.categories[cat] || { funded: 0, spent: 0, available: 0 };
+        const isSelected = initialSource === cat || (!initialSource && stats.unallocatedCash <= 0 && cStat.available > 0);
+        sourceOptions += FinzUI.html`<option value="${cat}" ${isSelected ? 'selected' : ''}>${cat} (Available: AED ${cStat.available.toLocaleString()})</option>`;
+    });
+
+    let destOptions = '';
+    destOptions += FinzUI.html`<option value="__unallocated__">Unallocated Cash (Return to paycheck pool)</option>`;
+    
+    const expenseCats = state.data.expenseCategories || [];
+    const savingsCats = state.data.savingsCategories || [];
+    const investCats = state.data.investmentCategories || [];
+
+    if (savingsCats.length > 0) {
+        destOptions += FinzUI.html`<optgroup label="🛡️ Savings & Sinking Funds">${savingsCats.map(cat => FinzUI.html`<option value="${cat}">${cat}</option>`).join('')}</optgroup>`;
+    }
+    if (investCats.length > 0) {
+        destOptions += FinzUI.html`<optgroup label="📈 Investments">${investCats.map(cat => FinzUI.html`<option value="${cat}">${cat}</option>`).join('')}</optgroup>`;
+    }
+    if (expenseCats.length > 0) {
+        destOptions += FinzUI.html`<optgroup label="🛒 Living Expenses">${expenseCats.map(cat => FinzUI.html`<option value="${cat}">${cat}</option>`).join('')}</optgroup>`;
+    }
+
+    let initialAvail = 0;
+    if (initialSource === '__unallocated__') initialAvail = stats.unallocatedCash;
+    else if (initialSource && stats.categories[initialSource]) initialAvail = stats.categories[initialSource].available;
+    else if (stats.unallocatedCash > 0) initialAvail = stats.unallocatedCash;
+
+    FinzUI.setHTML(c, FinzUI.html`
+        <div class="max-w-xl mx-auto bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl text-left space-y-6 fade-in">
+            <div class="flex items-center gap-3 pb-4 border-b border-slate-800">
+                <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </button>
+                <div>
+                    <h3 class="text-xl font-black text-white">Transfer Between Envelopes</h3>
+                    <p class="text-xs text-slate-400 font-bold">Rebalance funds between envelopes or unallocated paycheck cash</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">From Source</label>
+                    <select id="modal-transfer-source" data-finz-change="${FinzUI.handler(function(event) { return actions.onBudgetTransferSourceChange() })}" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold text-sm outline-none">
+                        ${sourceOptions}
+                    </select>
+                    <p id="modal-transfer-max-hint" class="text-[9px] font-bold text-slate-400 mt-1 pl-1">Available in selected source: AED ${Math.max(0, initialAvail).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">To Destination</label>
+                    <select id="modal-transfer-dest" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold text-sm outline-none">
+                        ${destOptions}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">Transfer Amount (AED)</label>
+                    <input type="number" id="modal-transfer-amt" value="${initialAvail > 0 ? initialAvail : ''}" min="0" step="any" placeholder="0.00" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-emerald-400 font-black text-2xl outline-none num-font">
+                </div>
+
+                <div class="flex flex-wrap gap-2 pt-1">
+                    <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setModalTransferAmount(50) })}" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-300">50</button>
+                    <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setModalTransferAmount(100) })}" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-300">100</button>
+                    <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setModalTransferAmount(250) })}" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-bold text-slate-300">250</button>
+                    ${initialAvail > 0 ? FinzUI.html`
+                        <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setModalTransferAmount(((initialAvail))) })}" class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 border border-sky-500/40 rounded-lg text-xs font-black text-sky-300">All Available (${initialAvail.toLocaleString()})</button>
+                    ` : ''}
+                </div>
+            </div>
+
+            <button data-finz-click="${FinzUI.handler(function(event) { return actions.executeModalBudgetTransfer() })}" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-950 p-4 rounded-2xl font-black uppercase tracking-wider shadow-lg shadow-sky-500/20 transition-all flex items-center justify-center gap-2">
+                <i data-lucide="arrow-right-left" class="w-5 h-5"></i> Execute Transfer
+            </button>
+        </div>
+    `);
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
+
+actions.onBudgetTransferSourceChange = function() {
+    const src = document.getElementById('modal-transfer-source')?.value;
+    const stats = actions.getEnvelopeStats();
+    let max = 0;
+    if (src === '__unallocated__') {
+        max = stats.unallocatedCash;
+    } else if (src && stats.categories[src]) {
+        max = stats.categories[src].available;
+    }
+    const maxHint = document.getElementById('modal-transfer-max-hint');
+    if (maxHint) {
+        maxHint.innerText = `Available in selected source: AED ${Math.max(0, max).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+};
+
+actions.executeModalBudgetTransfer = async function() {
+    const src = document.getElementById('modal-transfer-source')?.value;
+    const dest = document.getElementById('modal-transfer-dest')?.value;
+    const amt = parseFloat(document.getElementById('modal-transfer-amt')?.value) || 0;
+
+    if (!src || !dest) return actions.showToast("Select both source and destination.", "error");
+    if (src === dest) return actions.showToast("Source and destination must be different.", "error");
+    if (amt <= 0) return actions.showToast("Enter an amount greater than zero.", "error");
+
+    const stats = actions.getEnvelopeStats();
+    const available = src === '__unallocated__' ? stats.unallocatedCash : (stats.categories[src]?.available || 0);
+
+    if (amt > available + 0.005) {
+        return actions.showToast(`Only AED ${Math.max(0, available).toLocaleString(undefined, { maximumFractionDigits: 2 })} is available in ${src === '__unallocated__' ? 'Unallocated Cash' : src}.`, "error");
+    }
+
+    const date = new Date().toISOString();
+    state.data.envelopeLedger = state.data.envelopeLedger || [];
+
+    if (src === '__unallocated__') {
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date,
+            type: 'fund',
+            category: dest,
+            amount: amt
+        });
+    } else if (dest === '__unallocated__') {
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date,
+            type: 'defund',
+            category: src,
+            amount: amt
+        });
+    } else {
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date,
+            type: 'defund',
+            category: src,
+            amount: amt
+        });
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date,
+            type: 'fund',
+            category: dest,
+            amount: amt
+        });
+    }
+
+    await actions.updateDb();
+    const srcName = src === '__unallocated__' ? 'Unallocated Cash' : src;
+    const destName = dest === '__unallocated__' ? 'Unallocated Cash' : dest;
+    actions.showToast(`Transferred AED ${amt.toLocaleString()} from ${srcName} to ${destName}!`, "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.getLiquidCashTotal = function() {
+    const r = state.data.settings?.rate || 22.75;
+    const liquidAccs = (state.data.accounts || []).filter(a => ['Bank Account', 'Cash'].includes(a.type));
+    return liquidAccs.reduce((sum, a) => sum + (a.currency === 'AED' ? Number(a.balance || 0) : Number(a.balance || 0) / r), 0);
+};
+
+actions.openAdjustBudgetCredit = function() {
+    const stats = actions.getEnvelopeStats();
+    const liquidTotal = actions.getLiquidCashTotal();
+    const totalAllocated = stats.totalFunded - stats.totalDefunded;
+    const currentCredit = stats.totalCredit;
+
+    const c = document.getElementById('modal-content');
+    const titleEl = document.getElementById('modal-title');
+    if (titleEl) titleEl.innerText = 'Adjust Starting Budget Income';
+
+    FinzUI.setHTML(c, FinzUI.html`
+        <div class="max-w-xl mx-auto bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl text-left space-y-6 fade-in">
+            <div class="flex items-center gap-3 pb-4 border-b border-slate-800">
+                <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </button>
+                <div>
+                    <h3 class="text-xl font-black text-white">Adjust Starting Cycle Income</h3>
+                    <p class="text-xs text-slate-400 font-bold">Align your budget's starting income with your real-world money</p>
+                </div>
+            </div>
+
+            <!-- Balances overview -->
+            <div class="grid grid-cols-2 gap-3 text-center">
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Starting Budget Credit</p>
+                    <p class="text-xl font-black text-white num-font mt-0.5">AED ${currentCredit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5">
+                    <p class="text-[10px] font-bold text-emerald-400 uppercase">Real Bank & Cash Balance</p>
+                    <p class="text-xl font-black text-emerald-400 num-font mt-0.5">AED ${liquidTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Envelopes Allocated</p>
+                    <p class="text-xl font-black text-slate-300 num-font mt-0.5">AED ${totalAllocated.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/5">
+                    <p class="text-[10px] font-bold text-indigo-400 uppercase">Unallocated Cash</p>
+                    <p class="text-xl font-black text-indigo-400 num-font mt-0.5">AED ${stats.unallocatedCash.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/60 text-xs text-slate-300 space-y-1.5">
+                <p class="font-bold text-white flex items-center gap-1.5">
+                    <i data-lucide="info" class="w-4 h-4 text-emerald-400"></i> Why adjust starting income?
+                </p>
+                <p>If you mistakenly credited too much salary, deleted an envelope that refunded extra unallocated cash, or don't have enough balance in real life, lowering this number reduces your Unallocated Cash so your budget matches your actual bank account.</p>
+            </div>
+
+            <!-- Amount input -->
+            <div class="space-y-3">
+                <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 block">New Starting Budget Income (AED)</label>
+                <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">AED</span>
+                    <input type="number" id="adjust-budget-credit-input" value="${currentCredit}" step="any" min="0" class="w-full pl-14 pr-4 py-4 bg-slate-800 border border-slate-700 rounded-2xl text-white font-black text-xl outline-none focus:border-emerald-500 num-font">
+                </div>
+
+                <!-- Shortcut Buttons -->
+                <div class="flex flex-wrap gap-2 pt-1">
+                    <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setAdjustBudgetCreditVal(((liquidTotal))) })}" class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all">
+                        Match Real Bank Cash (${liquidTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                    </button>
+                    ${currentCredit >= 250 ? FinzUI.html`
+                        <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setAdjustBudgetCreditVal(((Math.max(0, currentCredit - 250)))) })}" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition-all">
+                            Reduce by 250 AED (${Math.max(0, currentCredit - 250).toLocaleString()})
+                        </button>
+                    ` : ''}
+                    <button type="button" data-finz-click="${FinzUI.handler(function(event) { return actions.setAdjustBudgetCreditVal(((totalAllocated))) })}" class="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold transition-all">
+                        Zero-Out Unallocated Cash (${totalAllocated.toLocaleString()})
+                    </button>
+                </div>
+            </div>
+
+            <button data-finz-click="${FinzUI.handler(function(event) { return actions.saveBudgetCredit() })}" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black uppercase text-xs tracking-wider py-4 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2">
+                <i data-lucide="check-circle" class="w-4 h-4"></i> Save Updated Income
+            </button>
+        </div>
+    `);
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
+
+actions.setAdjustBudgetCreditVal = function(val) {
+    const input = document.getElementById('adjust-budget-credit-input');
+    if (input) input.value = Math.max(0, val);
+};
+
+actions.saveBudgetCredit = async function() {
+    const input = document.getElementById('adjust-budget-credit-input');
+    if (!input) return;
+    const newCredit = Math.max(0, parseFloat(input.value) || 0);
+    const stats = actions.getEnvelopeStats();
+    const oldCredit = stats.totalCredit;
+
+    if (Math.abs(newCredit - oldCredit) < 0.005) {
+        actions.showToast("No change in starting budget income.", "info");
+        actions.renderBudgetUIOverride();
+        return;
+    }
+
+    state.data.envelopeLedger = state.data.envelopeLedger || [];
+    const credits = state.data.envelopeLedger.filter(e => e.type === 'credit');
+
+    if (credits.length === 0) {
+        state.data.envelopeLedger.unshift({
+            id: actions.genId(),
+            date: state.data.settings?.lastSalaryDate || new Date().toISOString(),
+            type: 'credit',
+            amount: newCredit,
+            note: 'Budget Cycle Income'
+        });
+    } else {
+        credits[0].amount = newCredit;
+        credits[0].note = (credits[0].note ? credits[0].note.replace(/\s*\(Adjusted\)/g, '') + ' (Adjusted)' : 'Adjusted Cycle Income');
+        if (credits.length > 1) {
+            const extraIds = new Set(credits.slice(1).map(c => c.id));
+            state.data.envelopeLedger = state.data.envelopeLedger.filter(e => !extraIds.has(e.id));
+        }
+    }
+
+    await actions.updateDb();
+    const updatedStats = actions.getEnvelopeStats();
+    actions.showToast(`Starting budget income updated to AED ${newCredit.toLocaleString()}! Unallocated cash is now AED ${updatedStats.unallocatedCash.toLocaleString()}.`, "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.openReconcileBudgetModal = function() {
+    const stats = actions.getEnvelopeStats();
+    const r = state.data.settings?.rate || 22.75;
+    const liquidAccs = (state.data.accounts || []).filter(a => ['Bank Account', 'Cash'].includes(a.type));
+    const liquidTotalAED = liquidAccs.reduce((sum, a) => sum + (a.currency === 'AED' ? Number(a.balance || 0) : Number(a.balance || 0) / r), 0);
+    const totalAllocated = stats.totalFunded - stats.totalDefunded;
+    const variance = liquidTotalAED - totalAllocated;
+
+    const c = document.getElementById('modal-content');
+    const titleEl = document.getElementById('modal-title');
+    if (titleEl) titleEl.innerText = 'Reconcile Budget with Bank';
+
+    FinzUI.setHTML(c, FinzUI.html`
+        <div class="max-w-2xl mx-auto bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl text-left space-y-6 fade-in">
+            <div class="flex items-center gap-3 pb-4 border-b border-slate-800">
+                <button data-finz-click="${FinzUI.handler(function(event) { return actions.renderBudgetUIOverride() })}" class="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all">
+                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </button>
+                <div>
+                    <h3 class="text-xl font-black text-white">Bank Balance vs. Budget Envelopes</h3>
+                    <p class="text-xs text-slate-400 font-bold">Ensure your digital budget envelopes match your real bank cash</p>
+                </div>
+            </div>
+
+            <!-- Variance Hero -->
+            <div class="p-6 rounded-3xl border ${variance >= 0 ? 'bg-emerald-950/20 border-emerald-500/40' : 'bg-rose-950/20 border-rose-500/40'} text-center space-y-1">
+                <p class="text-[10px] font-black uppercase tracking-widest ${variance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                    ${variance >= 0 ? 'Real Cash Buffer / Surplus' : 'Real-World Balance Shortfall'}
+                </p>
+                <h3 class="text-3xl font-black num-font ${variance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                    AED ${Math.abs(variance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                </h3>
+                <p class="text-xs text-slate-300 font-medium">
+                    ${variance >= 0 
+                        ? 'You have enough real bank cash to back all your envelope allocations.' 
+                        : 'Your real bank balance is lower than your budgeted envelope allocations! You do not have enough real balance to cover everything.'}
+                </p>
+            </div>
+
+            <!-- Accounts Breakdown -->
+            <div class="space-y-3">
+                <h4 class="text-xs font-black uppercase text-slate-400 tracking-wider">Your Liquid Bank & Cash Accounts</h4>
+                <div class="space-y-2">
+                    ${liquidAccs.length === 0 ? FinzUI.html`
+                        <p class="text-xs text-slate-500 py-3 text-center bg-slate-800/40 rounded-xl">No Bank Account or Cash accounts found.</p>
+                    ` : liquidAccs.map(a => {
+                        const aedVal = a.currency === 'AED' ? Number(a.balance || 0) : Number(a.balance || 0) / r;
+                        return FinzUI.html`
+                            <div class="flex justify-between items-center p-3.5 bg-slate-800/70 rounded-2xl border border-slate-700/60 text-xs">
+                                <div>
+                                    <span class="font-bold text-white">${a.name}</span>
+                                    <span class="text-slate-400 ml-2">(${a.type})</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="font-black text-white num-font">${a.currency} ${Number(a.balance || 0).toLocaleString()}</span>
+                                    ${a.currency !== 'AED' ? FinzUI.html`<span class="text-slate-400 block text-[10px]">≈ AED ${aedVal.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+
+            <!-- Reconciliation Solutions -->
+            <div class="space-y-3 pt-2">
+                <h4 class="text-xs font-black uppercase text-slate-400 tracking-wider">Recommended Actions</h4>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.syncBudgetToBankBalance() })}" class="p-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-2xl text-left transition-all space-y-1">
+                        <div class="flex items-center gap-2 text-emerald-400 font-black text-xs uppercase tracking-wider">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Sync Budget to Bank
+                        </div>
+                        <p class="text-[11px] text-slate-300 font-medium">Sets budget starting income to match your real cash (AED ${liquidTotalAED.toLocaleString()}).</p>
+                    </button>
+
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.openBulkBudgetEditor() })}" class="p-4 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-2xl text-left transition-all space-y-1">
+                        <div class="flex items-center gap-2 text-indigo-400 font-black text-xs uppercase tracking-wider">
+                            <i data-lucide="sliders" class="w-4 h-4"></i> Adjust Envelopes
+                        </div>
+                        <p class="text-[11px] text-slate-300 font-medium">Reduce non-essential envelopes (Dining, Shopping, Investments) to match available cash.</p>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
+
+actions.syncBudgetToBankBalance = async function() {
+    const liquidTotalAED = actions.getLiquidCashTotal();
+    state.data.envelopeLedger = state.data.envelopeLedger || [];
+    const credits = state.data.envelopeLedger.filter(e => e.type === 'credit');
+    
+    if (credits.length === 0) {
+        state.data.envelopeLedger.unshift({
+            id: actions.genId(),
+            date: state.data.settings?.lastSalaryDate || new Date().toISOString(),
+            type: 'credit',
+            amount: liquidTotalAED,
+            note: 'Synced to Bank Balance'
+        });
+    } else {
+        credits[0].amount = liquidTotalAED;
+        credits[0].note = 'Synced to Bank Balance';
+        if (credits.length > 1) {
+            const extraIds = new Set(credits.slice(1).map(c => c.id));
+            state.data.envelopeLedger = state.data.envelopeLedger.filter(e => !extraIds.has(e.id));
+        }
+    }
+    
+    await actions.updateDb();
+    actions.showToast(`Budget cycle income synced to real bank balance (AED ${liquidTotalAED.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})!`, "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.restoreDeletedCategory = async function(cat) {
+    if (!cat) return;
+    const lower = cat.toLowerCase();
+    let targetPillar = 'expenseCategories';
+    if (lower.includes('saving') || lower.includes('fund') || lower.includes('emergency') || lower.includes('car') || lower.includes('vacation')) {
+        targetPillar = 'savingsCategories';
+    } else if (lower.includes('invest') || lower.includes('mf') || lower.includes('mutual') || lower.includes('stock') || lower.includes('sarwa') || lower.includes('crypto')) {
+        targetPillar = 'investmentCategories';
+    }
+    
+    state.data[targetPillar] = state.data[targetPillar] || [];
+    if (!state.data[targetPillar].includes(cat)) {
+        state.data[targetPillar].push(cat);
+    }
+    await actions.updateDb();
+    actions.showToast(`Restored envelope "${cat}"! It is now visible in the budget.`, "success");
+    actions.renderBudgetUIOverride();
+};
+
+actions.cleanOrphanEnvelopeFunds = async function(cat) {
+    if (!cat) return;
+    const stats = actions.getEnvelopeStats();
+    const cStat = stats.categories[cat];
+    const funded = cStat ? cStat.funded : 0;
+    
+    if (Math.abs(funded) < 0.005) {
+        state.data.envelopeLedger = (state.data.envelopeLedger || []).filter(e => e.category !== cat);
+    } else {
+        state.data.envelopeLedger = state.data.envelopeLedger || [];
+        state.data.envelopeLedger.push({
+            id: actions.genId(),
+            date: new Date().toISOString(),
+            type: 'defund',
+            category: cat,
+            amount: funded,
+            note: 'Defund deleted envelope'
+        });
+    }
+    await actions.updateDb();
+    actions.showToast(`Released AED ${funded.toLocaleString()} from "${cat}" back to Unallocated Cash!`, "success");
+    actions.renderBudgetUIOverride();
+};
+
 actions.openSurplusSweepModal = function(surplusAmt) {
     const c = document.getElementById('modal-content');
     const titleEl = document.getElementById('modal-title');
     if (titleEl) titleEl.innerText = 'Sweep Surplus to Savings / Assets';
     
-    const mainAccs = state.data.accounts.filter(a => ['Bank Account', 'Cash'].includes(a.type));
-    const targetAccs = state.data.accounts.filter(a => ['Savings', 'Investment', 'Mutual Fund', 'Emergency Fund'].includes(a.type));
+    const mainAccs = actions.activeAccounts().filter(a => ['Bank Account', 'Cash'].includes(a.type));
+    const targetAccs = actions.activeAccounts().filter(a => ['Savings', 'Investment', 'Mutual Fund', 'Emergency Fund'].includes(a.type));
     
     FinzUI.setHTML(c, FinzUI.html`
         <div class="max-w-xl mx-auto bg-slate-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl text-left space-y-6 fade-in">
@@ -2406,7 +3610,7 @@ actions.openSurplusSweepModal = function(surplusAmt) {
                 <div>
                     <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">From Account (Source)</label>
                     <select id="sweep-source" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold text-sm outline-none">
-                        ${mainAccs.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency}) - Balance: AED ${a.balance.toLocaleString()}</option>`).join('')}
+                        ${mainAccs.map(a => FinzUI.html`<option value="${a.id}">${a.name} - Balance: ${a.currency} ${a.balance.toLocaleString()}</option>`).join('')}
                     </select>
                 </div>
 
@@ -2418,7 +3622,7 @@ actions.openSurplusSweepModal = function(surplusAmt) {
                 </div>
                 
                 <div>
-                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">Sweep Amount</label>
+                    <label class="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">Sweep Amount (AED)</label>
                     <input type="number" id="sweep-amt" value="${surplusAmt}" class="w-full p-4 bg-slate-800 border border-slate-700 rounded-2xl text-emerald-400 font-black text-xl outline-none num-font">
                 </div>
             </div>
@@ -2435,42 +3639,20 @@ actions.executeSurplusSweep = async function() {
     const sId = document.getElementById('sweep-source')?.value;
     const tId = document.getElementById('sweep-target')?.value;
     const amt = parseFloat(document.getElementById('sweep-amt')?.value) || 0;
-    if (amt <= 0 || !sId || !tId) return;
-
+    if (!sId || !tId) return actions.showToast('Select a source and a destination account.', 'error');
+    if (amt <= 0) return actions.showToast('Enter an amount greater than zero.', 'error');
     const sAcc = state.data.accounts.find(a => a.id === sId);
-    const tAcc = state.data.accounts.find(a => a.id === tId);
-    const date = new Date().toISOString();
-    const rateSnapshot = state.data.settings?.rate || 22.75;
 
-    // Outflow from Source
-    state.data.transactions.push({
-        id: actions.genId(),
-        accountId: sId,
-        amount: -amt,
-        type: 'transfer_out',
-        category: 'Transfer',
-        note: `Surplus Sweep to ${tAcc?.name || 'Savings'}`,
-        date,
-        exchangeRate: rateSnapshot
+    // The surplus is an AED figure; both sides are booked as one linked transfer in their own currencies.
+    const { to, outAmount } = await actions.recordInternalTransfer({
+        fromId: sId, toId: tId, amount: amt, amountCurrency: 'AED', category: 'Transfer',
+        outNote: `Surplus Sweep to ${state.data.accounts.find(a => a.id === tId)?.name || 'Savings'}`,
+        inNote: `Surplus Sweep from ${sAcc?.name || 'Bank'}`
     });
 
-    // Inflow to Target
-    state.data.transactions.push({
-        id: actions.genId(),
-        accountId: tId,
-        amount: amt,
-        type: 'transfer_in',
-        category: 'Transfer',
-        note: `Surplus Sweep from ${sAcc?.name || 'Bank'}`,
-        date,
-        exchangeRate: rateSnapshot
-    });
-
-    actions.recalculateBalances();
-    await actions.updateDb();
     actions.renderApp();
     actions.viewBudgetReports();
-    actions.showToast(`Swept AED ${amt.toLocaleString()} to ${tAcc?.name || 'Savings'}!`, "success");
+    actions.showToast(`Swept ${sAcc.currency} ${outAmount.toLocaleString()} to ${to.name}!`, "success");
     if (actions.fireConfetti) actions.fireConfetti();
 };
 

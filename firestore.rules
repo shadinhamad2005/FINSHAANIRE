@@ -16,8 +16,20 @@ service cloud.firestore {
         && data._ledgerFormat == 1 && data._ledgerChunks is list
         && data._ledgerChunks.size() > 0 && data._ledgerChunks.size() <= 200;
     }
+    // Household sharing: the owner lists up to 10 viewer UIDs in finance/access. Viewers may only READ.
+    function viewer(appId, userId) {
+      return request.auth != null && appId == 'finshaanire-v2'
+        && exists(/databases/$(database)/documents/artifacts/$(appId)/users/$(userId)/finance/access)
+        && request.auth.uid in get(/databases/$(database)/documents/artifacts/$(appId)/users/$(userId)/finance/access).data.viewers;
+    }
+    match /artifacts/{appId}/users/{userId}/finance/access {
+      allow read: if owner(appId, userId);
+      allow create, update: if owner(appId, userId) && request.resource.data.keys().hasOnly(['viewers'])
+        && request.resource.data.viewers is list && request.resource.data.viewers.size() <= 10;
+      allow delete: if owner(appId, userId);
+    }
     match /artifacts/{appId}/users/{userId}/finance/{documentId} {
-      allow read: if owner(appId, userId) && (documentId == 'main' || documentId.matches('main_chunk_[a-f0-9-]+_[0-9]+'));
+      allow read: if (owner(appId, userId) || viewer(appId, userId)) && (documentId == 'main' || documentId.matches('main_chunk_[a-f0-9-]+_[0-9]+'));
       allow create, update: if owner(appId, userId) && (
         (documentId == 'main' && (legacyLedger(request.resource.data) || manifest(request.resource.data))) ||
         (documentId.matches('main_chunk_[a-f0-9-]+_[0-9]+') && request.resource.data.keys().hasOnly(['json'])

@@ -267,9 +267,21 @@ actions.fetchExchangeRate = async function fetchExchangeRate() {
             try {
                 const res = await fetch('https://api.exchangerate-api.com/v4/latest/AED');
                 const d = await res.json();
-                if (d.rates && d.rates.INR) {
-                    state.data.settings.rate = d.rates.INR;
-                    document.getElementById('exchange-rate-badge')?.classList.add('rate-live');
+                const live = Number(d?.rates?.INR);
+                if (live > 1) {
+                    // Remember one observed rate per day (feeds the remittance planner); never overwrite a day.
+                    if (!state.data.rateHistory) state.data.rateHistory = {};
+                    const today = FinzCore.localDateKey(new Date());
+                    if (!state.data.rateHistory[today]) {
+                        state.data.rateHistory[today] = live;
+                        const cutoff = FinzCore.localDateKey(new Date(Date.now() - 400 * 86400000));
+                        for (const day of Object.keys(state.data.rateHistory)) if (day < cutoff) delete state.data.rateHistory[day];
+                    }
+                    actions.liveRate = live;
+                    if (!state.data.settings.rateLocked) {
+                        state.data.settings.rate = live;
+                        document.getElementById('exchange-rate-badge')?.classList.add('rate-live');
+                    }
                 }
             } catch (e) { console.warn("Live rate unavailable."); }
             // Always refresh asset values on generic refresh
@@ -296,7 +308,9 @@ actions.renderApp = function renderApp() {
                     icon = 'coins';
                     iconColor = 'bg-amber-500/15 border border-amber-500/30 text-amber-400';
                     const metalName = a.subtype || 'Commodity';
-                    subtext = `${metalName}${a.weight ? ' • ' + a.weight + 'g' : ' • Asset'}`;
+                    subtext = `${metalName}${a.karat ? ` ${a.karat}K` : ''}${a.weight ? ' • ' + a.weight + 'g' : ' • Asset'}`;
+                    const market = actions.marketValue(a);
+                    if (market !== null && !state.data.settings.isPrivate) subtext += ` • Market ${a.currency} ${market.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
                 }
                 else if (a.type === 'Mutual Fund') {
                     const meta = state.data.portfolio?.[a.schemeCode];
@@ -344,6 +358,29 @@ actions.renderApp = function renderApp() {
                 else if (a.type === 'Bond') {
                     icon = 'file-text';
                     iconColor = 'bg-cyan-900/30 border border-cyan-700/30 text-cyan-400';
+                }
+                if (a.type === 'Credit Card') {
+                    const owed = Math.max(0, -Number(a.balance || 0));
+                    const limit = Number(a.creditLimit) || 0;
+                    const used = limit > 0 ? Math.min(100, owed / limit * 100) : 0;
+                    const hidden = state.data.settings.isPrivate;
+                    return FinzUI.html`<div class="bg-slate-800/50 backdrop-blur-md p-4 rounded-[1.5rem] border border-slate-700/50 shadow-sm cursor-pointer hover:bg-slate-800 transition-all" data-finz-click="${FinzUI.handler(function(event) { return actions.viewAccountLedger(((a.id))) })}">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center space-x-4 text-left">
+                                <div class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner bg-rose-500/15 border border-rose-500/30 text-rose-400"><i data-lucide="credit-card" class="w-6 h-6"></i></div>
+                                <div>
+                                    <p class="font-bold text-slate-100 text-sm tracking-wide">${a.name}</p>
+                                    <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">Credit Card${a.dueDay ? ` • Due day ${a.dueDay}` : ''}</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-black ${owed > 0 ? 'text-rose-400' : 'text-slate-100'} text-base num-font">${hidden ? '****' : (owed > 0 ? FinzUI.html`-${actions.fmtMoney(owed, a.currency)}` : actions.fmtMoney(0, a.currency))}</p>
+                                <span class="text-[8px] font-black text-slate-400 uppercase tracking-wider">${limit > 0 ? `${Math.round(used)}% of limit used` : 'Owed'}</span>
+                            </div>
+                        </div>
+                        ${limit > 0 ? FinzUI.html`<div class="w-full bg-slate-900/80 rounded-full h-1.5 mt-3 overflow-hidden"><div class="h-full ${used > 70 ? 'bg-rose-500' : used > 30 ? 'bg-amber-400' : 'bg-emerald-500'}" style="width: ${used}%"></div></div>` : ''}
+                        ${owed > 0 ? FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { event.stopPropagation(); return actions.openPayCard(((a.id))) })}" class="mt-3 w-full py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Pay card</button>` : ''}
+                    </div>`;
                 }
                 if (a.type === 'Emergency Fund') {
                     icon = 'shield';
@@ -406,7 +443,7 @@ actions.renderApp = function renderApp() {
             if (document.getElementById('rate-display')) ut('rate-display', r.toFixed(2));
 
             let uae = 0, ind = 0, inv = 0;
-            accounts.forEach(a => { if (a.currency === 'AED') uae += a.balance; else ind += a.balance; if (!['Bank Account', 'Cash', 'Savings'].includes(a.type)) inv += (a.currency === 'AED' ? a.balance * r : a.balance); });
+            accounts.forEach(a => { if (a.currency === 'AED') uae += a.balance; else ind += a.balance; if (!['Bank Account', 'Cash', 'Savings', 'Credit Card'].includes(a.type)) inv += (a.currency === 'AED' ? a.balance * r : a.balance); });
             const pay = debts.filter(d => !d.settled && d.type === 'payable').reduce((s, d) => s + (Number(d.amount) * (d.currency === 'AED' ? r : 1)), 0), rec = debts.filter(d => !d.settled && d.type === 'receivable').reduce((s, d) => s + (Number(d.amount) * (d.currency === 'AED' ? r : 1)), 0);
 
             const net = (uae * r) + ind + rec - pay;
@@ -462,20 +499,9 @@ actions.renderApp = function renderApp() {
                 console.error("Milestone update err", e);
             }
 
-            // Snapshot Net Worth
-            if (!state.data.historicalSnapshots) {
-                state.data.historicalSnapshots = [];
-                // Generate some mock history for demonstration (past 3 months growing slowly)
-                for (let i = 3; i > 0; i--) {
-                    const d = new Date();
-                    d.setMonth(d.getMonth() - i);
-                    state.data.historicalSnapshots.push({
-                        month: d.toISOString().slice(0, 7),
-                        netWorthAED: rawNetAED * (1 - (0.05 * i)) // 5% growth per month mock
-                    });
-                }
-            }
-            const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+            // Snapshot Net Worth: one real value per local calendar month (no invented history).
+            if (!state.data.historicalSnapshots) state.data.historicalSnapshots = [];
+            const currentMonthStr = FinzCore.localDateKey(new Date()).slice(0, 7); // YYYY-MM
             const lastSnap = state.data.historicalSnapshots[state.data.historicalSnapshots.length - 1];
             if (!lastSnap || lastSnap.month !== currentMonthStr) {
                 state.data.historicalSnapshots.push({
@@ -495,7 +521,12 @@ actions.renderApp = function renderApp() {
             });
             let totalGoalsAED = 0;
             (state.data.goals || []).forEach(g => {
-                totalGoalsAED += (g.currency === 'AED' ? Number(g.saved) : Number(g.saved) / r);
+                // Money earmarked inside liquid cash reduces what is safe to spend; a goal tracking an
+                // investment or other non-cash account is not part of liquid cash in the first place.
+                const linked = g.accountId && state.data.accounts.find(a => a.id === g.accountId);
+                if (linked && !['Bank Account', 'Cash', 'Savings'].includes(linked.type)) return;
+                const saved = FinzCore.goalSaved(g, state.data);
+                totalGoalsAED += (g.currency === 'AED' ? saved : saved / r);
             });
             const safeToSpendAED = liquidCashAED - totalGoalsAED;
             ut('safe-to-spend-budget', priv ? privText : actions.fmtMoney(safeToSpendAED, 'AED'));
@@ -507,7 +538,8 @@ actions.renderApp = function renderApp() {
                 if (state.data.goals && state.data.goals.length > 0) {
                     gSec.classList.remove('hidden');
                     FinzUI.setHTML(gl, state.data.goals.map(g => {
-                        const pct = Math.min(100, Math.round((g.saved / g.target) * 100));
+                        const saved = FinzCore.goalSaved(g, state.data);
+                        const pct = Math.min(100, Math.round((saved / g.target) * 100));
                         return FinzUI.html`
                         <div class="text-slate-900 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm text-left relative overflow-hidden group cursor-pointer" data-finz-click="${FinzUI.handler(function(event) { return actions.openModal('goals') })}">
                             <div class="text-slate-900 absolute inset-0 bg-slate-50 translate-y-[100%] group-hover:translate-y-[0%] transition-transform duration-500 ease-in-out"></div>
@@ -529,8 +561,8 @@ actions.renderApp = function renderApp() {
                                     <div class="bg-indigo-500 h-2.5 rounded-full" style="width: ${pct}%"></div>
                                 </div>
                                 <div class="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                    <span>Saved: ${actions.fmtMoney(g.saved, g.currency)}</span>
-                                    <span>Left: ${actions.fmtMoney(g.target - g.saved, g.currency)}</span>
+                                    <span>Saved: ${actions.fmtMoney(saved, g.currency)}</span>
+                                    <span>Left: ${actions.fmtMoney(Math.max(0, g.target - saved), g.currency)}</span>
                                 </div>
                             </div>
                         </div>`;
@@ -550,8 +582,8 @@ actions.renderApp = function renderApp() {
             const uLabel = document.getElementById('user-label');
             if (state.user && uLabel) uLabel.innerText = state.user.email.split('@')[0];
 
-            actions.renderAssetsList('uae', accounts.filter(a => a.currency === 'AED'));
-            actions.renderAssetsList('india', accounts.filter(a => a.currency === 'INR'));
+            actions.renderAssetsList('uae', accounts.filter(a => a.currency === 'AED' && !a.archived));
+            actions.renderAssetsList('india', accounts.filter(a => a.currency === 'INR' && !a.archived));
             actions.renderNotifications();
             actions.renderInstallments();
             actions.renderSmartInsights();
@@ -586,14 +618,14 @@ actions.renderWealthLandscape = function () {
             const today = new Date();
             let tempNW = currentNW;
 
-            // Group transactions by day
+            // Group transactions by local day, valued in INR like currentNW
             const dailyTx = {};
             state.data.transactions.forEach(t => {
-                const date = t.date.split('T')[0];
+                const date = FinzCore.localDateKey(t.date);
                 const amt = parseFloat(t.amount);
-                // We need the value in INR Approx for the trend
-                // Note: This is an approximation since we don't track historical rates
-                let val = amt;
+                if (!date || !Number.isFinite(amt)) return;
+                // AED entries must be converted, or they would move an INR total by the AED figure.
+                let val = FinzCore.txCurrency(t, state.data.accounts) === 'AED' ? amt * r : amt;
                 // Try to infer currency from account or transaction (simplified)
                 // If it was an Expense, NW goes DOWN, so to go BACK in time, we ADD it.
                 // If Income, NW goes UP, so going back, we SUBTRACT.
@@ -606,7 +638,7 @@ actions.renderWealthLandscape = function () {
             for (let i = 0; i < 30; i++) {
                 const d = new Date();
                 d.setDate(today.getDate() - i);
-                const dateStr = d.toISOString().split('T')[0];
+                const dateStr = FinzCore.localDateKey(d);
                 history.push(tempNW);
 
                 // Reverse adjustment for next iteration (going back in time)
@@ -727,8 +759,8 @@ actions.renderExpenseTrend = function () {
     const months = Array.from({ length: 6 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - 5 + i, 1));
     const totals = months.map(month => state.data.transactions.filter(t => {
         const date = new Date(t.date);
-        return t.type === 'expense' && date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
-    }).reduce((sum, t) => sum + actions.convert(t.amount, t.currency), 0));
+        return FinzCore.isSpending(t) && date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
+    }).reduce((sum, t) => sum + actions.getTransactionBaseAmount(t), 0));
     actions.expenseTrendChart = new Chart(canvas, { type: 'bar', data: {
         labels: months.map(m => m.toLocaleString('default', { month: 'short' })),
         datasets: [{ label: 'Expenses (AED)', data: totals, backgroundColor: '#f43f5e' }]
@@ -835,32 +867,68 @@ actions.renderNotifications = function renderNotifications() {
                 }
             });
 
+            // Credit cards with a balance owed whose payment day is within the next 3 days.
+            for (const card of actions.activeAccounts().filter(a => a.type === 'Credit Card' && a.dueDay && Number(a.balance) < 0)) {
+                const due = new Date(today.getFullYear(), today.getMonth(), Math.min(card.dueDay, new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()));
+                if (due < new Date(today.getFullYear(), today.getMonth(), today.getDate())) due.setMonth(due.getMonth() + 1, Math.min(card.dueDay, new Date(due.getFullYear(), due.getMonth() + 2, 0).getDate()));
+                const dueStr = toStr(due);
+                if (dueStr <= toStr(new Date(today.getTime() + 3 * 86400000))) {
+                    items.push({ id: card.id, type: 'card', party: `${card.name} payment`, date: dueStr, amount: (-Number(card.balance)).toFixed(2), currency: card.currency, isCard: true });
+                }
+            }
+
+            // Monthly close: during the first 7 days of a month, offer last month's summary until viewed or dismissed.
+            if (today.getDate() <= 7) {
+                const prev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                const key = toStr(prev).slice(0, 7);
+                let seen = null; try { seen = localStorage.getItem('finz_close_seen'); } catch (_) { /* storage unavailable */ }
+                const hadActivity = state.data.transactions.some(t => FinzCore.localDateKey(t.date).startsWith(key));
+                if (seen !== key && hadActivity) items.push({ id: key, type: 'close', party: `${prev.toLocaleString('en-US', { month: 'long' })} summary ready`, date: toStr(today), amount: '', currency: '', isClose: true, prev });
+            }
+
             const sorted = items.sort((a, b) => new Date(a.date) - new Date(b.date));
 
             if (sorted.length === 0) { panel.classList.add('hidden'); return; }
             panel.classList.remove('hidden');
 
             FinzUI.setHTML(list, sorted.map(d => {
-                const settleAction = d.isBnpl ? (() => actions.settleInstallment(d.id, d.instIndex)) : (() => actions.openSettleFlow(d.id));
+                const settleAction = d.isClose ? (() => actions.openMonthlyClose(d.prev.getFullYear(), d.prev.getMonth())) : d.isCard ? (() => actions.openPayCard(d.id)) : d.isBnpl ? (() => actions.settleInstallment(d.id, d.instIndex)) : (() => actions.openSettleFlow(d.id));
                 return FinzUI.html`
                 <div class="text-slate-900 bg-white p-4 rounded-2xl border-l-4 ${d.type === 'receivable' ? 'border-emerald-500' : 'border-amber-500'} shadow-sm flex flex-col justify-between text-center">
                     <div class="flex justify-between items-start mb-3 text-center">
                         <div class="text-left text-center">
-                            <p class="text-[8px] font-black uppercase text-slate-400 mb-0.5">${d.type === 'receivable' ? 'Money In' : 'Money Out'}</p>
+                            <p class="text-[8px] font-black uppercase text-slate-400 mb-0.5">${d.isClose ? 'Monthly Close' : d.type === 'receivable' ? 'Money In' : 'Money Out'}</p>
                             <p class="font-bold text-slate-800 text-sm text-center">${d.party}</p>
-                            <p class="text-[9px] font-bold text-slate-400 uppercase text-center text-center">Due: ${d.date}</p>
+                            <p class="text-[9px] font-bold text-slate-400 uppercase text-center text-center">${d.isClose ? 'Income, spending, savings' : `Due: ${d.date}`}</p>
                         </div>
                         <p class="font-black text-slate-900">${d.amount} ${d.currency}</p>
                     </div>
                     <div class="grid grid-cols-2 gap-2 text-center text-center">
-                        <button data-finz-click="${FinzUI.handler(function(event) { return (settleAction).call(this, event); })}" class="bg-emerald-500 text-white py-1.5 rounded-lg text-[9px] font-bold uppercase shadow-sm text-center text-center">Settle</button>
-                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.openRescheduleFlow(((d.id))) })}" class="text-slate-900 bg-slate-50 text-slate-600 py-1.5 rounded-lg text-[9px] font-bold uppercase text-center text-center">Later</button>
+                        <button data-finz-click="${FinzUI.handler(function(event) { return (settleAction).call(this, event); })}" class="bg-emerald-500 text-white py-1.5 rounded-lg text-[9px] font-bold uppercase shadow-sm text-center text-center">${d.isClose ? 'View' : d.isCard ? 'Pay' : 'Settle'}</button>
+                        ${d.isClose ? FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { try { localStorage.setItem('finz_close_seen', d.id); } catch (_) { /* storage unavailable */ } return actions.renderNotifications(); })}" class="text-slate-900 bg-slate-50 text-slate-600 py-1.5 rounded-lg text-[9px] font-bold uppercase">Dismiss</button>` : d.isCard ? FinzUI.html`<span class="py-1.5 text-[9px] font-bold uppercase text-slate-400">Card</span>` : FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { return actions.openRescheduleFlow(((d.id))) })}" class="text-slate-900 bg-slate-50 text-slate-600 py-1.5 rounded-lg text-[9px] font-bold uppercase text-center text-center">Later</button>`}
                     </div>
                 </div>`;
             }).join(''));
         };
 
 actions.parsedRows = [];
+
+// Opens a transfer into the card for the full amount owed, from a bank account in the same currency when there is one.
+actions.openPayCard = function (cardId) {
+            const card = state.data.accounts.find(a => a.id === cardId);
+            if (!card) return;
+            actions.openModal('transfer');
+            setTimeout(() => {
+                const banks = actions.cashAccounts().filter(a => a.type !== 'Credit Card');
+                const source = banks.find(a => a.currency === card.currency) || banks[0];
+                const ts = document.getElementById('ts'), ttg = document.getElementById('ttg'), amt = document.getElementById('tamt'), note = document.getElementById('trn');
+                if (source && ts) ts.value = source.id;
+                if (ttg) ttg.value = card.id;
+                if (amt) amt.value = Math.max(0, -Number(card.balance)).toFixed(2);
+                if (note) note.value = `${card.name} payment`;
+                actions.updateTransferUI();
+            }, 40);
+        };
 
 actions.switchProfileTab = function (tab) {
             const secBtn = document.getElementById('tab-btn-security');
@@ -911,7 +979,7 @@ if (type === 'salary') {
                     <div class="mb-8 text-left">
                         <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-2 block">Credited To Account</label>
                         <select id="sal-acc" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center outline-none">
-                            ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
+                            ${actions.activeAccounts().map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
                         </select>
                     </div>
                     
@@ -1045,7 +1113,7 @@ if (type === 'credit_score') {
                             <div id="query-results" class="hidden mt-8 text-left">
                                 <div class="flex justify-between items-end border-b border-slate-200 pb-4 mb-4">
                                     <div>
-                                        <p class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Query Aggregate</p>
+                                        <p class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Net Total (In − Out)</p>
                                         <p id="query-total-sum" class="text-2xl font-black text-slate-900 mt-1 num-font w-full max-w-[200px] break-all">0.00</p>
                                     </div>
                                     <button data-finz-click="${FinzUI.handler(function(event) { return actions.exportCustomQueryPDF() })}" class="bg-emerald-50 text-emerald-600 px-4 py-2 flex items-center rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all border border-emerald-100 shrink-0 self-center">
@@ -1112,7 +1180,7 @@ if (type === 'credit_score') {
                                     <option value="INR">INR</option>
                                 </select>
                                 <select id="at" data-finz-change="${FinzUI.handler(function(event) { return actions.toggleAssetFields() })}" class="p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold text-center outline-none">
-                                    ${state.data.assetTypes.map(ty => FinzUI.html`<option value="${ty}">${ty}</option>`).join('')}
+                                    ${[...new Set([...state.data.assetTypes, 'Credit Card'])].map(ty => FinzUI.html`<option value="${ty}">${ty}</option>`).join('')}
                                 </select>
                             </div>
 
@@ -1136,6 +1204,24 @@ if (type === 'credit_score') {
                                     <input type="number" id="emf-target" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 font-mono" placeholder="Target">
                                 </div>
 
+                                <!-- Credit Card -->
+                                <div id="inp-card" class="hidden space-y-4">
+                                    <div>
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Credit Limit</label>
+                                        <input type="number" id="card-limit" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-rose-500 font-mono" placeholder="e.g. 20000">
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Statement Day</label>
+                                            <input type="number" id="card-statement" min="1" max="31" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none font-mono" placeholder="1-31">
+                                        </div>
+                                        <div>
+                                            <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Payment Due Day</label>
+                                            <input type="number" id="card-due" min="1" max="31" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none font-mono" placeholder="1-31">
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- Commodity Inputs -->
                                 <div id="inp-commodity" class="hidden space-y-4">
                                     <div>
@@ -1152,6 +1238,10 @@ if (type === 'credit_score') {
                                     <div>
                                         <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1">Weight in Grams (Optional)</label>
                                         <input type="number" step="any" id="aw" data-finz-input="${FinzUI.handler(function(event) { return actions.calcCommodityBalance() })}" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-amber-500 font-mono placeholder-slate-500" placeholder="e.g. 10">
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1 block mb-1 mt-3">Purity (gold)</label>
+                                        <select id="commodity-karat" data-finz-change="${FinzUI.handler(function(event) { return actions.calcCommodityBalance() })}" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none">
+                                            <option value="24">24K (pure)</option><option value="22">22K</option><option value="21">21K</option><option value="18">18K</option>
+                                        </select>
                                         <p id="commodity-rate-hint" class="text-[10px] text-amber-400 font-bold mt-1 pl-1"></p>
                                     </div>
                                 </div>
@@ -1214,7 +1304,7 @@ if (type === 'credit_score') {
                         <input type="hidden" id="tt" value="expense">
                         <div class="mb-4 text-left">
                             <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Account</label>
-                            <select id="ta" data-finz-change="${FinzUI.handler(function(event) { return actions.onTxAccountChange() })}" class="w-full p-4 border border-slate-700 rounded-xl font-bold bg-slate-900 text-white text-center outline-none">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
+                            <select id="ta" data-finz-change="${FinzUI.handler(function(event) { return actions.onTxAccountChange() })}" class="w-full p-4 border border-slate-700 rounded-xl font-bold bg-slate-900 text-white text-center outline-none">${actions.cashAccounts().map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
                         </div>
                         <div class="grid grid-cols-2 gap-4 mb-4 text-left">
                             <div>
@@ -1226,9 +1316,15 @@ if (type === 'credit_score') {
                                 <input type="number" id="tam" placeholder="0.00" data-finz-input="${FinzUI.handler(function(event) { return actions.checkBudgetWarning() })}" class="w-full p-4 border border-slate-700 rounded-xl font-black text-center bg-slate-900 text-white focus:border-rose-500 outline-none num-font">
                             </div>
                         </div>
-                        <div class="mb-4 text-left">
-                            <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Note (Optional)</label>
-                            <input type="text" id="tn" placeholder="e.g. Grocery, Lunch, Rent" class="w-full p-4 border border-slate-700 rounded-xl bg-slate-900 text-white outline-none focus:border-rose-500">
+                        <div class="grid grid-cols-3 gap-4 mb-4 text-left">
+                            <div class="col-span-2">
+                                <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Note (Optional)</label>
+                                <input type="text" id="tn" placeholder="e.g. Grocery, Lunch, Rent" class="w-full p-4 border border-slate-700 rounded-xl bg-slate-900 text-white outline-none focus:border-rose-500">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Date</label>
+                                <input type="date" id="tx-date" value="${FinzCore.localDateKey(new Date())}" class="w-full p-4 border border-slate-700 rounded-xl bg-slate-900 text-white outline-none focus:border-rose-500 text-xs font-bold">
+                            </div>
                         </div>
                         <div id="tx-exclude-budget-container" class="mb-6 flex items-center justify-between p-3.5 bg-slate-900/80 border border-slate-700/80 rounded-xl text-left">
                             <div class="pr-3">
@@ -1236,6 +1332,12 @@ if (type === 'credit_score') {
                                 <p class="text-[10px] text-slate-400 mt-0.5">Paid from savings / capital — won't deduct from monthly salary envelopes</p>
                             </div>
                             <input type="checkbox" id="tx-exclude-budget" data-finz-change="${FinzUI.handler(function(event) { return actions.checkBudgetWarning() })}" class="w-5 h-5 rounded accent-rose-500 cursor-pointer">
+                        </div>
+                        <div id="tx-split-container" class="mb-6 p-3.5 bg-slate-900/80 border border-slate-700/80 rounded-xl text-left">
+                            <p class="text-xs font-bold text-slate-200">Split this bill (optional)</p>
+                            <p class="text-[10px] text-slate-400 mb-2">Split equally. Your share counts as spending; each person's share is recorded as money they owe you.</p>
+                            ${(state.data.contacts || []).length ? FinzUI.html`<div class="flex flex-wrap gap-2">${state.data.contacts.map(c => FinzUI.html`<label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-bold text-slate-200 cursor-pointer"><input type="checkbox" class="tx-split-contact accent-rose-500" value="${c.name}"> ${c.name}</label>`).join('')}</div>`
+                                : FinzUI.html`<p class="text-[10px] text-slate-500">Add contacts in Liability Management to split bills with them.</p>`}
                         </div>
                         <p id="tx-validation" role="alert" class="hidden mb-4 text-sm font-bold text-rose-300"></p>
                         <button id="btn-save-tx" data-finz-click="${FinzUI.handler(function(event) { return actions.saveTransaction() })}" class="w-full bg-rose-600 hover:bg-rose-700 text-white p-4 rounded-2xl font-black uppercase tracking-wider shadow-lg shadow-rose-600/30 transition-all text-center">Authorize entry</button>
@@ -1250,13 +1352,13 @@ if (type === 'credit_score') {
                             <div>
                                 <label class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">From (Source)</label>
                                 <select id="ts" data-finz-change="${FinzUI.handler(function(event) { return actions.updateTransferUI() })}" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-rose-500 text-sm">
-                                    ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency} ${actions.toCurrency(a.balance).toLocaleString()})</option>`).join('')}
+                                    ${actions.activeAccounts().map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency} ${actions.toCurrency(a.balance).toLocaleString()})</option>`).join('')}
                                 </select>
                             </div>
                             <div>
                                 <label class="text-[10px] font-black uppercase text-slate-400 block mb-1.5 pl-1">To (Destination)</label>
                                 <select id="ttg" data-finz-change="${FinzUI.handler(function(event) { return actions.updateTransferUI() })}" class="w-full p-4 border border-slate-700 bg-slate-900 text-white rounded-2xl font-bold outline-none focus:border-emerald-500 text-sm">
-                                    ${state.data.accounts.map((a, idx) => FinzUI.html`<option value="${a.id}" ${idx === 1 ? 'selected' : ''}>${a.name} (${a.currency} ${actions.toCurrency(a.balance).toLocaleString()})</option>`).join('')}
+                                    ${actions.activeAccounts().map((a, idx) => FinzUI.html`<option value="${a.id}" ${idx === 1 ? 'selected' : ''}>${a.name} (${a.currency} ${actions.toCurrency(a.balance).toLocaleString()})</option>`).join('')}
                                 </select>
                             </div>
                         </div>
@@ -1303,6 +1405,7 @@ if (type === 'credit_score') {
                             <div id="remit-summary-pill" class="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-center text-xs font-bold text-indigo-300">
                                 Enter sending amount to calculate
                             </div>
+                            <p id="remit-advice" class="hidden p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-center text-xs font-bold text-amber-200"></p>
                         </div>
 
                         <!-- Description & Category -->
@@ -1332,7 +1435,7 @@ if (type === 'credit_score') {
                     }, 20);
                     break;
                 case 'debt': t.innerText = 'Liability Management'; FinzUI.setHTML(c, actions.renderDebtUI()); break;
-                case 'settings': t.innerText = 'Configuration Hub'; FinzUI.setHTML(c, actions.renderSettingsUI()); break;
+                case 'settings': t.innerText = 'Configuration Hub'; FinzUI.setHTML(c, actions.renderSettingsUI()); setTimeout(() => actions.refreshSharingViewers(), 0); break;
                 case 'reports': t.innerText = 'Summaries'; FinzUI.setHTML(c, actions.renderDistributionInsights()); break;
                 case 'analytics': t.innerText = 'Financial Health Board'; actions.renderDashboard(); break;
                 case 'budget': t.innerText = 'Monthly Budgeting'; FinzUI.setHTML(c, actions.renderBudgetUI()); setTimeout(actions.recalculateBalances, 50); break;
@@ -1368,7 +1471,7 @@ if (type === 'credit_score') {
                         </div>
                         <div class="mb-4">
                              <label class="text-[10px] font-black uppercase text-slate-400 block mb-1 text-left ml-2">Receiving Account</label>
-                             <select id="sal-acc" class="w-full p-4 border rounded-xl font-bold text-center">${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
+                             <select id="sal-acc" class="w-full p-4 border rounded-xl font-bold text-center">${actions.cashAccounts().map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}</select>
                         </div>
                         <button data-finz-click="${FinzUI.handler(function(event) { return actions.processSalary() })}" class="w-full bg-emerald-500 text-white p-4 rounded-2xl font-black uppercase shadow-lg mb-2">Execute Allocations</button>
                         <button data-finz-click="${FinzUI.handler(function(event) { return actions.printSalary() })}" class="w-full bg-slate-100 text-slate-600 p-4 rounded-2xl font-bold uppercase mt-2"><i data-lucide="printer" class="inline w-4 h-4 mr-1"></i> Print Summary</button>
@@ -1397,7 +1500,7 @@ if (type === 'credit_score') {
                                     <label class="text-[9px] font-black uppercase text-slate-400 ml-3 mb-1 block">From Account (Source)</label>
                                     <select id="sw-src" class="text-slate-900 w-full p-4 border rounded-xl font-bold text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500">
                                         <option value="">Select Source...</option>
-                                        ${state.data.accounts.filter(a => ['Bank Account', 'Cash', 'Savings'].includes(a.type)).map(a => FinzUI.html`<option value="${a.id}">${a.name} (Avl: ${a.balance})</option>`).join('')}
+                                        ${actions.cashAccounts().map(a => FinzUI.html`<option value="${a.id}">${a.name} (Avl: ${a.balance})</option>`).join('')}
                                     </select>
                                 </div>
                                 <div class="flex justify-center text-slate-300"><i data-lucide="arrow-down" class="w-6 h-6"></i></div>
@@ -1421,50 +1524,61 @@ if (type === 'credit_score') {
         };
 
 actions.renderSubscriptionsUI = function () {
+            const editing = (state.data.subscriptions || []).find(x => x.id === actions.editingSubscriptionId) || null;
+            const v = editing || {};
+            const sel = (value, current) => value === current ? 'selected' : '';
+            const subCategory = v.category && v.category !== 'Recurring' ? v.category : '';
             return FinzUI.html`<div class= "max-w-xl mx-auto space-y-6">
             <div class="text-slate-900 bg-slate-50 p-6 rounded-[2.5rem] border shadow-sm">
-                <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest text-center">New Auto-Pay</h4>
+                <h4 class="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest text-center">${editing ? `Edit Auto-Pay: ${editing.name}` : 'New Auto-Pay'}</h4>
                 <div class="space-y-4">
-                    <input type="text" id="sub-name" placeholder="Name (e.g. Netflix)" class="w-full p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500">
-                        <div class="grid grid-cols-2 gap-4">
-                            <input type="number" id="sub-amt" placeholder="Amount" class="p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500">
-                                <input type="number" id="sub-day" placeholder="Day (1-31)" min="1" max="31" class="p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500">
-                                </div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <select id="sub-type" class="text-slate-900 p-3 border rounded-xl font-bold text-sm bg-white">
-                                        <option value="expense">Expense (-)</option>
-                                        <option value="income">Income (+)</option>
-                                    </select>
-                                    <select id="sub-acc" class="text-slate-900 p-3 border rounded-xl font-bold text-sm bg-white">
-                                        <option value="">Link Account...</option>
-                                        ${state.data.accounts.map(a => FinzUI.html`<option value="${a.id}">${a.name} (${a.currency})</option>`).join('')}
-                                    </select>
-                                </div>
-                                
-                                <!-- NEW FIELDS: Billing Cycle & Free Trial -->
-                                <div class="grid grid-cols-2 gap-4">
-                                     <select id="sub-cycle" class="text-slate-900 p-3 border rounded-xl font-bold text-sm bg-white">
-                                        <option value="Monthly">Monthly</option>
-                                        <option value="Yearly">Yearly</option>
-                                    </select>
-                                    <div class="relative">
-                                        <label class="text-slate-900 absolute -top-2 left-2 px-1 bg-white text-[9px] font-bold text-slate-400">Free Trial Ends (Opt)</label>
-                                        <input type="date" id="sub-trial" class="w-full p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500 text-slate-600">
-                                    </div>
-                                </div>
-                                <button data-finz-click="${FinzUI.handler(function(event) { return actions.addSubscription() })}" class="w-full bg-slate-900 text-white p-3 rounded-xl font-black uppercase shadow-lg text-xs">Create Schedule</button>
+                    <input type="text" id="sub-name" value="${v.name || ''}" placeholder="Name (e.g. Netflix)" class="w-full p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500">
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="number" id="sub-amt" value="${v.amount ?? ''}" placeholder="Amount" class="p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500">
+                        <input type="number" id="sub-day" value="${v.day ?? ''}" placeholder="Day (1-31)" min="1" max="31" class="p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <select id="sub-type" class="text-slate-900 p-3 border rounded-xl font-bold text-sm bg-white">
+                            <option value="expense" ${sel('expense', v.type)}>Expense (-)</option>
+                            <option value="income" ${sel('income', v.type)}>Income (+)</option>
+                        </select>
+                        <select id="sub-acc" class="text-slate-900 p-3 border rounded-xl font-bold text-sm bg-white">
+                            <option value="">Link Account...</option>
+                            ${actions.activeAccounts().map(a => FinzUI.html`<option value="${a.id}" ${sel(a.id, v.accountId)}>${a.name} (${a.currency})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase ml-1">Budget category (so it counts against the right envelope)</label>
+                        <select id="sub-category" class="text-slate-900 w-full p-3 border rounded-xl font-bold text-sm bg-white">
+                            <option value="">Recurring (no envelope)</option>
+                            ${actions.getAllBudgetCategories().map(c => FinzUI.html`<option value="${c}" ${sel(c, subCategory)}>${c}</option>`).join('')}
+                            ${(state.data.incomeCategories || []).map(c => FinzUI.html`<option value="${c}" ${sel(c, subCategory)}>${c} (income)</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <select id="sub-cycle" class="text-slate-900 p-3 border rounded-xl font-bold text-sm bg-white">
+                            <option value="Monthly" ${sel('Monthly', v.billingCycle || 'Monthly')}>Monthly</option>
+                            <option value="Yearly" ${sel('Yearly', v.billingCycle)}>Yearly</option>
+                        </select>
+                        <div class="relative">
+                            <label class="text-slate-900 absolute -top-2 left-2 px-1 bg-white text-[9px] font-bold text-slate-400">Free Trial Ends (Opt)</label>
+                            <input type="date" id="sub-trial" value="${v.freeTrialEndDate || ''}" class="w-full p-3 border rounded-xl font-bold text-sm outline-none focus:border-emerald-500 text-slate-600">
                         </div>
+                    </div>
+                    <button id="btn-save-sub" data-finz-click="${FinzUI.handler(function(event) { return actions.addSubscription() })}" class="w-full bg-slate-900 text-white p-3 rounded-xl font-black uppercase shadow-lg text-xs">${editing ? 'Save Changes' : 'Create Schedule'}</button>
+                    ${editing ? FinzUI.html`<button data-finz-click="${FinzUI.handler(function(event) { actions.editingSubscriptionId = null; return actions.openModal('subscriptions'); })}" class="w-full text-slate-400 p-2 font-bold uppercase text-[10px]">Cancel edit</button>` : ''}
                 </div>
+            </div>
 
-                <div class="space-y-4">
-                    <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Active Schedules</h4>
-                    ${(state.data.subscriptions || []).map(s => {
+            <div class="space-y-4">
+                <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Schedules</h4>
+                ${(state.data.subscriptions || []).map(s => {
                 const acc = state.data.accounts.find(a => a.id === s.accountId);
-                return FinzUI.html`<div class="text-slate-900 bg-white p-5 rounded-[2rem] border shadow-sm flex justify-between items-center group">
+                return FinzUI.html`<div class="text-slate-900 bg-white p-5 rounded-[2rem] border shadow-sm flex justify-between items-center group ${s.paused ? 'opacity-60' : ''}">
                             <div class="text-left">
-                                <p class="font-black text-slate-800">${s.name}</p>
+                                <p class="font-black text-slate-800">${s.name} ${s.paused ? FinzUI.html`<span class="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[8px] font-black">PAUSED</span>` : ''}</p>
                                 <p class="text-[9px] font-bold text-slate-400 uppercase">
-                                    ${s.billingCycle || 'Monthly'} • Next: ${new Date(s.nextDate).toLocaleDateString()}
+                                    ${s.billingCycle || 'Monthly'} • ${s.paused ? 'On hold' : `Next: ${new Date(s.nextDate).toLocaleDateString()}`} • ${s.category || 'Recurring'}
                                     ${s.freeTrialEndDate && new Date(s.freeTrialEndDate) > new Date() ?
                         FinzUI.html`<span class="ml-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[8px] font-black">TRIAL</span>` : ''}
                                 </p>
@@ -1472,12 +1586,29 @@ actions.renderSubscriptionsUI = function () {
                             </div>
                             <div class="text-right">
                                 <p class="font-black text-lg ${s.type === 'income' ? 'text-emerald-500' : 'text-slate-800'}">${s.type === 'income' ? '+' : '-'} ${s.amount}</p>
-                                <button data-finz-click="${FinzUI.handler(function(event) { return actions.deleteSubscription(((s.id))) })}" class="text-[9px] text-red-300 font-bold uppercase hover:text-red-500">Stop</button>
+                                <div class="flex gap-3 justify-end">
+                                    <button data-finz-click="${FinzUI.handler(function(event) { actions.editingSubscriptionId = s.id; return actions.openModal('subscriptions'); })}" class="text-[9px] text-slate-400 font-bold uppercase hover:text-slate-700">Edit</button>
+                                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.toggleSubscriptionPause(((s.id))) })}" class="text-[9px] text-amber-500 font-bold uppercase hover:text-amber-700">${s.paused ? 'Resume' : 'Pause'}</button>
+                                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.deleteSubscription(((s.id))) })}" class="text-[9px] text-red-300 font-bold uppercase hover:text-red-500">Stop</button>
+                                </div>
                             </div>
                         </div>`;
             }).join('') || FinzUI.literal("<p class=\"text-center text-slate-300 py-4 font-bold text-xs uppercase\">No active subscriptions</p>")}
-                </div>
+            </div>
             </div>`;
+        };
+
+// Next charge date for a billing day, from today (or the trial end, if later).
+const firstChargeDate = (day, cycle, trial) => {
+            const now = new Date();
+            const d = new Date(now.getFullYear(), now.getMonth(), Math.min(day, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()));
+            let next = now.getDate() > day ? FinzCore.nextDue(d, cycle, day) : d;
+            if (trial) {
+                const trialDate = new Date(trial + 'T00:00:00');
+                if (!Number.isFinite(trialDate.getTime())) return null;
+                if (trialDate > next) next = trialDate;
+            }
+            return next;
         };
 
 actions.addSubscription = async function () {
@@ -1486,6 +1617,7 @@ actions.addSubscription = async function () {
             const day = parseInt(document.getElementById('sub-day').value);
             const type = document.getElementById('sub-type').value;
             const accId = document.getElementById('sub-acc').value;
+            const category = document.getElementById('sub-category')?.value || '';
             // Capture target if transfer
             const targetAccId = document.getElementById('sub-target-acc') ? document.getElementById('sub-target-acc').value : null;
 
@@ -1501,38 +1633,55 @@ actions.addSubscription = async function () {
                 actions.showToast("Please select a Destination Account.", "error");
                 return;
             }
-
-            if (!state.data.subscriptions) state.data.subscriptions = [];
-
-            const now = new Date();
-            const d = new Date(now.getFullYear(), now.getMonth(), Math.min(day, new Date(now.getFullYear(), now.getMonth()+1, 0).getDate()));
-            let nextDate = d;
-            if (now.getDate() > day) nextDate = FinzCore.nextDue(d, cycle, day);
-            if (trial) {
-                const trialDate = new Date(trial + 'T00:00:00');
-                if (!Number.isFinite(trialDate.getTime())) { actions.showToast('Invalid trial date.', 'error'); return; }
-                if (trialDate > nextDate) nextDate = trialDate;
+            if (type === 'transfer' && targetAccId === accId) {
+                actions.showToast("Source and destination accounts must be different.", "error");
+                return;
             }
 
-            state.data.subscriptions.push({
-                id: actions.genId(),
-                name, amount, type,
+            if (!state.data.subscriptions) state.data.subscriptions = [];
+            const existing = state.data.subscriptions.find(x => x.id === actions.editingSubscriptionId);
+
+            // An edit keeps the scheduled date unless the billing day, cycle or trial changed.
+            const scheduleChanged = !existing || existing.day !== day || (existing.billingCycle || 'Monthly') !== cycle || (existing.freeTrialEndDate || null) !== trial;
+            const nextDate = scheduleChanged ? firstChargeDate(day, cycle, trial) : new Date(existing.nextDate);
+            if (!nextDate) { actions.showToast('Invalid trial date.', 'error'); return; }
+
+            const record = {
+                name: name.trim(), amount, type,
                 day,
                 billingCycle: cycle,
                 freeTrialEndDate: trial,
                 nextDate: nextDate.toISOString(),
                 accountId: accId,
                 targetAccountId: targetAccId || null,
-                category: type === 'transfer' ? 'Transfer' : 'Recurring'
-            });
+                category: type === 'transfer' ? 'Transfer' : (category || 'Recurring')
+            };
+            if (existing) Object.assign(existing, record);
+            else state.data.subscriptions.push({ id: actions.genId(), ...record });
             await updateDb();
-            actions.showToast("Subscription Added!", "success");
+            actions.editingSubscriptionId = null;
+            actions.showToast(existing ? "Schedule updated." : "Subscription Added!", "success");
             actions.openModal('subscriptions');
+        };
+
+actions.toggleSubscriptionPause = async function (id) {
+            const sub = (state.data.subscriptions || []).find(x => x.id === id);
+            if (!sub) return;
+            if (sub.paused) {
+                // Resuming never back-charges the paused months: the next charge is the next billing day from today.
+                delete sub.paused;
+                const next = firstChargeDate(sub.day || new Date(sub.nextDate).getDate(), sub.billingCycle || 'Monthly', null);
+                sub.nextDate = next.toISOString();
+            } else sub.paused = true;
+            await updateDb();
+            actions.openModal('subscriptions');
+            actions.showToast(sub.paused ? `${sub.name} paused.` : `${sub.name} resumed.`, 'success');
         };
 
 actions.deleteSubscription = async function (id) {
             actions.showConfirm("Stop this subscription?", "Future auto-transactions will be cancelled.", async () => {
                 state.data.subscriptions = state.data.subscriptions.filter(s => s.id !== id);
+                if (actions.editingSubscriptionId === id) actions.editingSubscriptionId = null;
                 await updateDb(); actions.openModal('subscriptions');
                 actions.showToast("Subscription cancelled.", "success");
             });
@@ -1779,6 +1928,10 @@ actions.renderSettingsUI = function () {
                             <input type="number" id="sr" step="0.01" value="${state.data.settings.rate}" class="w-32 p-3 bg-slate-900/80 border border-slate-700 rounded-xl text-center outline-none focus:border-rose-500 focus:ring-1 ring-rose-500/50 text-white num-font [&::-webkit-inner-spin-button]:appearance-none appearance-none">
                             <span class="text-base text-slate-400">INR</span>
                         </div>
+                        <label class="mt-4 flex items-center justify-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
+                            <input type="checkbox" id="sets-rate-lock" ${state.data.settings.rateLocked ? 'checked' : ''} class="w-4 h-4 accent-rose-500">
+                            Lock this rate (don't replace it with the live rate on start)
+                        </label>
                     </div>
                 </div>
                 
@@ -1931,11 +2084,41 @@ actions.renderSettingsUI = function () {
                     <p class="text-[9px] text-slate-400 font-bold">Warning: This moves all transactions from Source to Target and deletes Source.</p>
                 </div>
 
+                <!--TOOLS-->
+                <div class="bg-slate-800/50 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-lg mt-8 text-left space-y-5">
+                    <p class="text-[9px] font-black text-rose-400 uppercase tracking-widest">Tools</p>
+                    <div class="flex flex-wrap gap-3">
+                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.openMonthlyClose() })}" class="px-4 py-3 bg-slate-900/80 border border-slate-700 text-slate-200 rounded-xl font-bold text-[10px] uppercase">Last month's close</button>
+                        <select id="year-pack-year" class="px-3 py-3 bg-slate-900/80 border border-slate-700 text-slate-200 rounded-xl font-bold text-[10px]">
+                            ${[0, 1, 2].map(i => new Date().getFullYear() - i).map(y => FinzUI.html`<option value="${y}">${y}</option>`).join('')}
+                        </select>
+                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.generateYearPack(document.getElementById('year-pack-year').value) })}" class="px-4 py-3 bg-slate-900/80 border border-slate-700 text-slate-200 rounded-xl font-bold text-[10px] uppercase">Year-end tax & zakat pack (PDF)</button>
+                        <button data-finz-click="${FinzUI.handler(function(event) { return actions.resetTrendHistory() })}" class="px-4 py-3 bg-slate-900/80 border border-slate-700 text-slate-200 rounded-xl font-bold text-[10px] uppercase">Reset net-worth trend</button>
+                    </div>
+                    <div>
+                        <p class="text-xs font-black text-slate-200 mb-2">Archived accounts</p>
+                        ${state.data.accounts.filter(a => a.archived).length ? state.data.accounts.filter(a => a.archived).map(a => FinzUI.html`<div class="flex justify-between items-center py-2 border-b border-slate-700/50"><span class="text-xs font-bold text-slate-300">${a.name} (${a.currency}) • ${a.currency} ${Number(a.balance || 0).toLocaleString()}</span><button data-finz-click="${FinzUI.handler(function(event) { return actions.archiveAccount(a.id, false) })}" class="text-[10px] font-black uppercase text-emerald-400">Restore</button></div>`).join('') : FinzUI.html`<p class="text-[10px] text-slate-500">None. Archive an account from its ledger to hide it while keeping its history.</p>`}
+                    </div>
+                    <div id="sharing-panel">
+                        <p class="text-xs font-black text-slate-200 mb-1">Household sharing (read-only)</p>
+                        <p class="text-[10px] text-slate-400 mb-2">Your sharing ID: <span class="font-mono text-slate-200 select-all">${state.user?.uid || ''}</span>. Someone you add can view your ledger from their own login but cannot change anything.</p>
+                        <div id="sharing-viewers" class="text-[10px] text-slate-400 mb-2">Loading who can view…</div>
+                        <div class="flex gap-2 mb-3">
+                            <input id="sharing-add" placeholder="Their sharing ID" class="flex-1 p-3 bg-slate-900/80 border border-slate-700 text-white rounded-xl text-xs font-mono">
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.addSharingViewer() })}" class="px-4 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase">Allow</button>
+                        </div>
+                        <div class="flex gap-2">
+                            <input id="sharing-open" placeholder="Owner's sharing ID" class="flex-1 p-3 bg-slate-900/80 border border-slate-700 text-white rounded-xl text-xs font-mono">
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openSharedLedger(document.getElementById('sharing-open').value) })}" class="px-4 bg-slate-700 text-white rounded-xl font-black text-[10px] uppercase">View their ledger</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!--7. DATA ACTIONS-->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
                     <div class="bg-slate-800/50 p-6 rounded-[2.5rem] text-center border border-slate-700/50 shadow-lg">
                         <p class="text-[9px] font-black text-rose-400 uppercase tracking-widest mb-4">Data Management</p>
-                        <div class="flex justify-center gap-4">
+                        <div class="flex flex-wrap justify-center gap-4">
                             <button data-finz-click="${FinzUI.handler(function(event) { return actions.exportBackup() })}" class="flex items-center gap-2 bg-slate-900/80 border border-slate-700 text-slate-300 px-5 py-3 rounded-xl font-bold text-[10px] uppercase hover:text-rose-400 hover:border-rose-500/50 transition-all">
                                 <i data-lucide="download" class="w-4 h-4"></i> Backup
                             </button>
@@ -1943,6 +2126,9 @@ actions.renderSettingsUI = function () {
                                 <i data-lucide="upload" class="w-4 h-4"></i> Restore
                                 <input type="file" class="hidden" data-finz-change="${FinzUI.handler(function(event) { return actions.importBackup(this) })}">
                             </label>
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openModal('import') })}" class="flex items-center gap-2 bg-slate-900/80 border border-slate-700 text-slate-300 px-5 py-3 rounded-xl font-bold text-[10px] uppercase hover:text-emerald-400 hover:border-emerald-500/50 transition-all">
+                                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Import CSV
+                            </button>
                         </div>
                     </div>
                      <div class="bg-rose-950/30 p-6 rounded-[2.5rem] border border-rose-900/50 text-center flex flex-col justify-center shadow-lg">
@@ -1965,6 +2151,41 @@ actions.renderSettingsUI = function () {
             </div> `;
         };
 
+actions.resetTrendHistory = function () {
+            actions.showConfirm('Reset net-worth trend?', 'Clears the monthly net-worth history (including any placeholder months from older versions). Your accounts and transactions are not touched. A new history starts this month.', async () => {
+                state.data.historicalSnapshots = [];
+                actions.renderApp(); // Records this month's real value
+                await updateDb();
+                actions.showToast('Net-worth trend reset.', 'success');
+            }, 'Reset');
+        };
+
+// Lists who can view this ledger (filled in after the settings screen renders).
+actions.refreshSharingViewers = async function () {
+            const box = document.getElementById('sharing-viewers');
+            if (!box) return;
+            try {
+                const viewers = await actions.getSharingViewers();
+                FinzUI.setHTML(box, viewers.length ? FinzUI.html`${viewers.map(v => FinzUI.html`<div class="flex justify-between items-center py-1"><span class="font-mono text-slate-300">${v}</span><button data-finz-click="${FinzUI.handler(function(event) { return actions.removeSharingViewer(v) })}" class="text-[10px] font-black uppercase text-rose-400">Remove</button></div>`).join('')}` : 'Nobody else can view your ledger.');
+            } catch (error) { box.textContent = 'Sharing is not available yet: ' + error.message; }
+        };
+actions.addSharingViewer = async function () {
+            const id = document.getElementById('sharing-add')?.value.trim();
+            if (!/^[A-Za-z0-9_-]{6,128}$/.test(id || '')) return actions.showToast('Paste their sharing ID from their Settings.', 'error');
+            if (id === state.user?.uid) return actions.showToast('That is your own ID.', 'error');
+            const current = await actions.getSharingViewers();
+            await actions.setSharingViewers([...current, id]);
+            document.getElementById('sharing-add').value = '';
+            await actions.refreshSharingViewers();
+            actions.showToast('They can now view your ledger (read-only).', 'success');
+        };
+actions.removeSharingViewer = async function (id) {
+            const current = await actions.getSharingViewers();
+            await actions.setSharingViewers(current.filter(v => v !== id));
+            await actions.refreshSharingViewers();
+            actions.showToast('Access removed.', 'success');
+        };
+
 actions.previewTheme = function (t) {
             state.data.settings.theme = t;
             actions.applyTheme(t);
@@ -1975,8 +2196,10 @@ actions.previewTheme = function (t) {
 
 actions.saveSettings = async function () {
             const r = parseFloat(document.getElementById('sr').value);
-            if (isNaN(r)) return;
+            if (!Number.isFinite(r) || r <= 0) return actions.showToast('Enter a positive AED → INR exchange rate.', 'error');
             state.data.settings.rate = r;
+            const lockEl = document.getElementById('sets-rate-lock');
+            if (lockEl) { if (lockEl.checked) state.data.settings.rateLocked = true; else delete state.data.settings.rateLocked; }
 
             // New Advanced Settings
             state.data.settings.budgetStartDay = parseInt(document.getElementById('sets-day').value) || 1;
@@ -2023,20 +2246,25 @@ actions.mergeCategories = async function () {
                         }
                     });
 
-                    // 2. Merge Budgets
-                    if (state.data.budgets && state.data.budgets[src]) {
-                        const srcB = state.data.budgets[src] || 0;
-                        state.data.budgets[tgt] = (state.data.budgets[tgt] || 0) + srcB;
-                        delete state.data.budgets[src];
+                    // 2. Merge Budgets, rollovers and the saved template
+                    for (const key of ['budgets', 'budgetRollovers', 'budgetTemplate']) {
+                        const map = state.data[key];
+                        if (map && map[src] !== undefined) {
+                            map[tgt] = (Number(map[tgt]) || 0) + (Number(map[src]) || 0);
+                            delete map[src];
+                        }
                     }
+                    // 3. Move envelope allocations so funded money is not lost
+                    (state.data.envelopeLedger || []).forEach(e => { if (e.category === src) e.category = tgt; });
 
-                    // 3. Delete Category from List
-                    state.data.expenseCategories = state.data.expenseCategories.filter(c => c !== src);
-                    state.data.incomeCategories = state.data.incomeCategories.filter(c => c !== src); // Check both just in case
+                    // 4. Delete Category from every list (all three budget pillars and income)
+                    for (const key of ['expenseCategories', 'incomeCategories', 'savingsCategories', 'investmentCategories', 'fixedCategories']) {
+                        if (Array.isArray(state.data[key])) state.data[key] = state.data[key].filter(c => c !== src);
+                    }
 
                     await updateDb();
                     actions.showToast(`✅ Merged ${count} transactions from '${src}' to '${tgt}'.`, "success");
-                    actions.renderSettingsUI(); // Refresh UI
+                    actions.openModal('settings'); // Refresh UI
                     actions.renderApp();
                 }
             );
@@ -2090,19 +2318,22 @@ actions.renderFinancialHealth = function () {
                 }
             });
 
-            // Personal Borrowings (Payables)
+            // Personal Borrowings (Payables): only what falls due within 30 days (or is overdue)
+            // is a monthly obligation; a long-dated loan is not paid in full every month.
+            const dueHorizon = FinzCore.localDateKey(new Date(Date.now() + 30 * 86400000));
             (state.data.debts || []).filter(d => !d.isBnpl && d.subtype !== 'bnpl' && d.type === 'payable' && !d.settled).forEach(d => {
+                if (!d.repaymentDate || d.repaymentDate > dueHorizon) return;
                 const amt = parseFloat(d.amount) || 0;
                 monthlyDebt += (amt * (d.currency === 'AED' ? 1 : (1 / r)));
                 activePayableCount++;
             });
 
-            // 2. Calc Income (Salary Setting, Recent Income, or Fallback)
+            // 2. Calc Income (Salary Setting, Recent Earned Income, or Fallback)
             let income = parseFloat(state.data.settings?.expectedSalary) || 0;
             if (income === 0) {
                 const now = new Date();
                 const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                const recentInc = (state.data.transactions || []).filter(t => t.type === 'income' && new Date(t.date) >= d30).reduce((s, t) => s + (parseFloat(t.amount) * (t.currency === 'AED' ? 1 : 1 / r)), 0);
+                const recentInc = (state.data.transactions || []).filter(t => FinzCore.isEarnedIncome(t) && new Date(t.date) >= d30).reduce((s, t) => s + actions.getTransactionBaseAmount(t), 0);
                 income = recentInc > 0 ? recentInc : 15000;
             }
 
@@ -2360,7 +2591,7 @@ actions.generatePDF = function () {
                 styles: { fontSize: 8 }
             });
 
-            doc.save(`FI_SHAANIRE_Statement_${new Date().toISOString().split('T')[0]}.pdf`);
+            doc.save(`FI_SHAANIRE_Statement_${FinzCore.localDateKey(new Date())}.pdf`);
         };
 
 actions.toggleFixedCat = async function (cat) {
@@ -2434,12 +2665,15 @@ actions.onTxAccountChange = function () {
 
 actions.setT = function (t) {
             document.getElementById('tt').value = t;
-            const list = t === 'income' ? state.data.incomeCategories : state.data.expenseCategories;
             const select = document.getElementById('tc');
-            if (select) FinzUI.setHTML(select, list.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join(''));
+            // Expenses can be booked to any of the three budget pillars (the form opens that way too).
+            if (select) FinzUI.setHTML(select, t === 'income'
+                ? state.data.incomeCategories.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')
+                : actions.renderCategoryOptions());
             const be = document.getElementById('be');
             const bi = document.getElementById('bi');
             const excludeContainer = document.getElementById('tx-exclude-budget-container');
+            document.getElementById('tx-split-container')?.classList.toggle('hidden', t !== 'expense');
             if (be && bi) {
                 if (t === 'expense') {
                     be.className = "p-4 rounded-2xl border-2 border-rose-500 bg-rose-600 text-white font-black text-xs uppercase shadow-lg shadow-rose-600/30 transition-all";

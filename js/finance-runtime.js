@@ -49,6 +49,7 @@
         root.recalculateBalances = () => F.recalculate(state.data);
         root.genId = () => crypto.randomUUID();
         root.updateDb = function ({ replace = false } = {}) {
+            if (state.readOnly) return Promise.reject(new Error('This is a shared, read-only view. Return to your own ledger to make changes.'));
             if (!state.user || !loaded) return Promise.reject(new Error('Your account is still loading. Please try again.'));
             const uid = state.user.uid, session = generation;
             const base = F.clone(queued || baseline), proposed = clean(F.clone(state.data));
@@ -78,9 +79,11 @@
                         if (!before && entry.accountId !== 'virtual_writeoff' && !committed.accounts.some(a => a.id === entry.accountId)) {
                             throw new Error('The account for this entry was removed before saving.');
                         }
-                        if (['expense', 'transfer_out'].includes(entry.type) && !F.same(before, entry) &&
-                            committed.accounts.find(a => a.id === entry.accountId)?.balance < 0) {
-                            throw new Error('Insufficient funds after applying the latest changes from another device.');
+                        // A credit card may go negative down to its limit; every other account must stay at or above zero.
+                        const target = committed.accounts.find(a => a.id === entry.accountId);
+                        const floor = target?.type === 'Credit Card' ? -(Number(target.creditLimit) || 0) : 0;
+                        if (['expense', 'transfer_out'].includes(entry.type) && !F.same(before, entry) && target?.balance < floor - 0.001) {
+                            throw new Error(target.type === 'Credit Card' ? 'This would take the card past its credit limit.' : 'Insufficient funds after applying the latest changes from another device.');
                         }
                     }
                     writeLedger(transaction, ref, uid, committed, snap.exists() ? snap.data()._ledgerChunks : null);
@@ -231,12 +234,14 @@
             input.onchange = () => root.restoreVaultFromFile(input.files?.[0]); input.click();
         };
         root.checkSubscriptions = async () => {
-            if (runningSchedules || locked || !loaded) return;
+            if (runningSchedules || locked || !loaded || state.readOnly) return;
             runningSchedules = true;
             let changed = false;
+            const skipped = [];
             try {
                 const today = new Date();
                 for (const sub of state.data.subscriptions) {
+                    if (sub.paused) continue; // On hold: nothing is charged until resumed
                     const trial = sub.freeTrialEndDate ? new Date(sub.freeTrialEndDate + 'T00:00:00') : null;
                     if (trial && today < trial) continue;
                     let due = new Date(sub.nextDate);
@@ -249,7 +254,8 @@
                         const amount = Number(sub.amount);
                         if (!Number.isFinite(amount) || amount <= 0) break;
                         root.recalculateBalances();
-                        if (sub.type !== 'income' && acc.balance < amount) break;
+                        // Not paid yet; it is retried on the next start. Tell the user instead of failing silently.
+                        if (sub.type !== 'income' && acc.balance < amount) { skipped.push(`${sub.name} (${acc.name})`); break; }
                         const occurrence = `sub_${sub.id}_${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,'0')}-${String(due.getDate()).padStart(2,'0')}`;
                         if (!state.data.transactions.some(t => t.id === occurrence || t.id === occurrence + '_out')) {
                             const common = { date: due.toISOString(), exchangeRate: state.data.settings.rate, subscriptionId: sub.id };
@@ -268,10 +274,12 @@
                     }
                 }
                 if (changed) { root.recalculateBalances(); await root.updateDb(); root.renderApp(); }
+                if (skipped.length) root.showToast(`Auto-pay waiting for funds: ${skipped.join(', ')}`, 'warn');
             } finally { runningSchedules = false; }
         };
         async function runStartup() {
             if (!loaded || locked) return;
+            if (state.readOnly) { root.recalculateBalances(); root.renderApp(); root.fetchMetalsRate(); return; } // Viewing only: nothing that writes
             try {
                 root.recalculateBalances(); root.renderApp();
                 root.checkDueDebts();
@@ -281,41 +289,95 @@
                 root.fetchExchangeRate(); root.fetchMetalsRate();
             } catch (error) { root.showToast('Unable to finish loading: ' + error.message, 'error'); }
         }
-        onAuthStateChanged(auth, user => {
+        // A banner while viewing someone else's ledger, with the way back.
+        const sharedBanner = () => {
+            let bar = document.getElementById('shared-banner');
+            if (!state.readOnly) { bar?.remove(); return; }
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'shared-banner';
+                bar.className = 'fixed top-0 inset-x-0 z-[150] bg-amber-500 text-slate-950 text-xs font-black text-center py-2 px-4 flex items-center justify-center gap-3';
+                const label = document.createElement('span'); label.id = 'shared-banner-text';
+                const back = document.createElement('button'); back.textContent = 'Back to my ledger';
+                back.className = 'px-3 py-1 bg-slate-950 text-white rounded-lg uppercase text-[10px]';
+                back.addEventListener('click', () => root.closeSharedLedger());
+                bar.append(label, back); document.body.appendChild(bar);
+            }
+            document.getElementById('shared-banner-text').textContent = 'Shared household view: read-only.';
+        };
+        function subscribe(ownerUid, readOnly) {
             generation++; unsubscribe?.(); unsubscribe = null; loaded = false; locked = false;
-            state.user = user; state.data = F.defaults(); baseline = F.defaults();
-            document.getElementById('app-content').style.display = 'none';
-            document.getElementById('initial-loader').style.display = 'none';
-            document.getElementById('auth-screen').style.display = user && !user.isAnonymous ? 'none' : 'flex';
-            document.getElementById('pin-lock-screen')?.classList.replace('flex', 'hidden');
-            if (!user || user.isAnonymous) return;
+            state.data = F.defaults(); baseline = F.defaults();
+            state.readOnly = readOnly; state.sharedOwner = readOnly ? ownerUid : null;
+            sharedBanner();
             const session = generation;
             let snapshotSequence = 0;
-            unsubscribe = onSnapshot(refFor(user.uid), async snap => {
+            unsubscribe = onSnapshot(refFor(ownerUid), async snap => {
                 if (session !== generation || snap.metadata.hasPendingWrites) return;
                 if (pending) {
                     await queue;
                     if (session !== generation) return;
-                    snap = await getDoc(refFor(user.uid));
+                    snap = await getDoc(refFor(ownerUid));
                 }
                 const sequence = ++snapshotSequence;
                 try {
                     const first = !loaded;
-                    const data = await readLedger(snap, user.uid, getDoc);
+                    const data = await readLedger(snap, ownerUid, getDoc);
                     if (sequence !== snapshotSequence || session !== generation || pending) return;
                     delete data.settings.messagingToken; delete data.settings.whapiToken;
                     state.data = data; baseline = F.clone(data); loaded = true;
                     if (first) {
-                        locked = Boolean(data.settings.pinCode);
+                        // The owner's PIN protects the owner's device; a viewer has already signed in as themselves.
+                        locked = !readOnly && Boolean(data.settings.pinCode);
                         try { ({ attempts = 0, blockedUntil = 0 } = JSON.parse(sessionStorage.getItem(attemptKey()) || '{}')); } catch (_) { attempts = 0; blockedUntil = 0; }
-                        if (!snap.exists()) await root.updateDb();
+                        if (!snap.exists() && !readOnly) await root.updateDb();
                     }
                     if (data.settings.theme) root.applyTheme(data.settings.theme);
                     reveal();
                     if (first) await runStartup();
                     else if (!locked) { root.recalculateBalances(); root.renderApp(); }
                 } catch (error) { root.showToast('Unable to load your ledger: ' + error.message, 'error'); }
-            }, error => root.showToast('Unable to load your ledger: ' + error.message, 'error'));
+            }, error => {
+                if (session !== generation) return;
+                if (readOnly) {
+                    root.showToast('That ledger is not shared with you (or the sharing ID is wrong).', 'error');
+                    root.closeSharedLedger();
+                } else root.showToast('Unable to load your ledger: ' + error.message, 'error');
+            });
+        }
+        const accessRef = uid => doc(db, 'artifacts', appId, 'users', uid, 'finance', 'access');
+        root.openSharedLedger = ownerUid => {
+            ownerUid = String(ownerUid || '').trim();
+            if (!state.user) return;
+            if (!/^[A-Za-z0-9_-]{6,128}$/.test(ownerUid)) return root.showToast('Enter the sharing ID exactly as the owner gave it.', 'error');
+            if (ownerUid === state.user.uid) return root.showToast('That is your own sharing ID.', 'error');
+            try { localStorage.setItem('finz_shared_owner', ownerUid); } catch (_) { /* storage unavailable */ }
+            root.closeModal?.();
+            subscribe(ownerUid, true);
+        };
+        root.closeSharedLedger = () => { if (state.user) subscribe(state.user.uid, false); };
+        root.getSharingViewers = async () => {
+            if (!state.user || state.readOnly) return [];
+            const snap = await getDoc(accessRef(state.user.uid));
+            return snap.exists() && Array.isArray(snap.data().viewers) ? snap.data().viewers : [];
+        };
+        root.setSharingViewers = async viewers => {
+            if (!state.user || state.readOnly) throw new Error('Sharing can only be changed on your own ledger.');
+            const list = [...new Set(viewers.map(v => String(v).trim()).filter(Boolean))];
+            if (list.length > 10) throw new Error('Up to 10 people can view your ledger.');
+            await runTransaction(db, async transaction => { transaction.set(accessRef(state.user.uid), { viewers: list }); });
+            return list;
+        };
+        onAuthStateChanged(auth, user => {
+            generation++; unsubscribe?.(); unsubscribe = null; loaded = false; locked = false;
+            state.user = user; state.data = F.defaults(); baseline = F.defaults(); state.readOnly = false; state.sharedOwner = null;
+            sharedBanner();
+            document.getElementById('app-content').style.display = 'none';
+            document.getElementById('initial-loader').style.display = 'none';
+            document.getElementById('auth-screen').style.display = user && !user.isAnonymous ? 'none' : 'flex';
+            document.getElementById('pin-lock-screen')?.classList.replace('flex', 'hidden');
+            if (!user || user.isAnonymous) return;
+            subscribe(user.uid, false);
         });
     };
 })();

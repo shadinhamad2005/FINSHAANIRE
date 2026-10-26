@@ -1,6 +1,6 @@
 {
   "name": "finz",
-  "version": "2.7.0",
+  "version": "2.9.0",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src js scripts --no-warn-ignored",
     "test": "node --test --test-isolation=none tests/*.test.cjs",
-    "test:browser": "node scripts/build.mjs --test && node tests/browser-review.cjs",
+    "test:browser": "node scripts/build.mjs --test && node tests/browser-review.cjs && node tests/fixes-review.cjs && node tests/features-review.cjs",
     "test:rules": "firebase emulators:exec --only firestore --project demo-finz \"node --test --test-isolation=none tests/firestore.rules.cjs\"",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "build:release": "node scripts/build.mjs --release"

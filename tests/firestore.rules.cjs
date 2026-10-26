@@ -45,3 +45,17 @@ test('real concurrent transactions preserve both independent additions', async (
     await Promise.all([save('one'), save('two')]);
     require('node:assert/strict').deepEqual((await getDoc(ref)).data().transactions.map(t => t.id).sort(), ['one', 'two']);
 });
+test('household viewers can read but never write the shared ledger', async () => {
+    const alice = env.authenticatedContext('alice').firestore(), carol = env.authenticatedContext('carol').firestore();
+    const access = path('alice').replace(/main$/, 'access');
+    await assertSucceeds(setDoc(doc(alice, path('alice')), core.defaults()));
+    await assertFails(getDoc(doc(carol, path('alice'))));
+    await assertSucceeds(setDoc(doc(alice, access), { viewers: ['carol'] }));
+    await assertSucceeds(getDoc(doc(carol, path('alice'))));
+    await assertFails(setDoc(doc(carol, path('alice')), core.defaults()));
+    await assertFails(getDoc(doc(carol, access)));
+    await assertFails(setDoc(doc(carol, access), { viewers: ['carol', 'dave'] }));
+    await assertFails(setDoc(doc(alice, access), { viewers: ['carol'], admin: true }));
+    await assertSucceeds(setDoc(doc(alice, access), { viewers: [] }));
+    await assertFails(getDoc(doc(carol, path('alice'))));
+});
