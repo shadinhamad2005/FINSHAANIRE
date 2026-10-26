@@ -779,10 +779,12 @@ actions.getEnvelopeStats = function() {
     
     const firstCredit = el.find(item => item.type === 'credit');
     let envelopeStartDate = null;
-    if (firstCredit) {
+    if (state.data.settings?.lastSalaryDate) {
+        envelopeStartDate = new Date(state.data.settings.lastSalaryDate);
+    } else if (firstCredit) {
         envelopeStartDate = new Date(firstCredit.date);
     } else {
-        envelopeStartDate = new Date();
+        envelopeStartDate = new Date(0);
     }
     
     let stats = {
@@ -812,8 +814,12 @@ actions.getEnvelopeStats = function() {
         }
     });
 
+    const startBoundary = new Date(envelopeStartDate);
+    startBoundary.setHours(0, 0, 0, 0);
+
     tx.forEach(t => {
-        if (new Date(t.date) >= envelopeStartDate) {
+        const txDate = new Date(t.date);
+        if (txDate >= startBoundary) {
             if ((t.type === 'expense' || t.type === 'transfer_out') && t.category && !t.excludeFromBudget) {
                 if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
                 stats.categories[t.category].spent += actions.getTransactionBaseAmount(t);
@@ -870,49 +876,89 @@ actions.processSalary = async function () {
             return;
         }
         
-        const rateSnapshot = state.data.settings.rate;
+        const rateSnapshot = state.data.settings?.rate || 22.75;
         const date = new Date().toISOString();
         const salaryAccount = state.data.accounts.find(a => a.id === aId);
         if (!salaryAccount) throw new Error('Select the account that received the salary.');
         // Envelopes are budgeted in AED, so a salary paid into an INR account is converted.
         const creditAED = FinzCore.convert(amt, salaryAccount.currency, 'AED', rateSnapshot);
 
-        // Generate Report of outgoing cycle
+        // 1. Generate & Archive Report of outgoing cycle
         const oldStats = actions.getEnvelopeStats();
         if (!state.data.budgetReports) state.data.budgetReports = [];
         
-        if (state.data.settings.lastSalaryDate) {
-            state.data.budgetReports.push({
-                id: actions.genId(),
-                date: date, // End date of report
-                startDate: state.data.settings.lastSalaryDate,
-                stats: JSON.parse(JSON.stringify(oldStats))
+        const prevStart = state.data.settings?.lastSalaryDate || (state.data.envelopeLedger?.find(e => e.type === 'credit')?.date) || date;
+        state.data.budgetReports.push({
+            id: actions.genId(),
+            date: date, // End date of outgoing cycle
+            startDate: prevStart,
+            stats: JSON.parse(JSON.stringify(oldStats))
+        });
+
+        // 2. Determine planned envelope targets from new budget limits (not last month's envelopes)
+        const targets = {};
+        const allCats = actions.getAllBudgetCategories();
+        allCats.forEach(cat => {
+            const budgetLimit = (state.data.budgets && state.data.budgets[cat] !== undefined) ? Number(state.data.budgets[cat]) : null;
+            const templateLimit = (state.data.budgetTemplate && state.data.budgetTemplate[cat] !== undefined) ? Number(state.data.budgetTemplate[cat]) : null;
+            const target = (budgetLimit !== null && !isNaN(budgetLimit) && budgetLimit > 0)
+                ? budgetLimit
+                : ((templateLimit !== null && !isNaN(templateLimit) && templateLimit > 0) ? templateLimit : 0);
+            if (target > 0) {
+                targets[cat] = target;
+            }
+        });
+
+        // Keep template in sync with active budget limits
+        if (Object.keys(targets).length > 0) {
+            state.data.budgetTemplate = state.data.budgetTemplate || {};
+            Object.keys(targets).forEach(cat => {
+                state.data.budgetTemplate[cat] = targets[cat];
             });
-            actions.showToast("Monthly Budget Report generated!", "info");
         }
 
-        // RESET BUDGET LEDGER (Wipe old allocations and negative balances)
+        // 3. RESET BUDGET LEDGER (Wipe old allocations and negative balances)
         state.data.envelopeLedger = [];
 
-        // Log the income to the bank
+        // 4. Log the income to the bank account
         state.data.transactions.push({
             id: actions.genId(), accountId: aId, amount: actions.toCurrency(amt), currency: salaryAccount.currency, type: 'income', category: 'Salary', note: `Salary Credited`, date, exchangeRate: rateSnapshot
         });
 
-        // Log the credit to the envelope system
+        // 5. Log the credit to the envelope system
         state.data.envelopeLedger.push({
-            id: actions.genId(), date, type: 'credit', amount: creditAED
+            id: actions.genId(), date, type: 'credit', amount: creditAED, note: `Salary Cycle Income (${salaryAccount.name})`
         });
 
-        // Set last salary date for tracking period
-        state.data.settings.lastSalaryDate = date;
+        // 6. Auto-fill envelopes with standard planned targets from incoming salary
+        let remainingToFund = creditAED;
+        let totalAutoFunded = 0;
+        Object.keys(targets).forEach(cat => {
+            const targetAmt = targets[cat];
+            const toFund = Math.min(targetAmt, Math.max(0, remainingToFund));
+            if (toFund > 0) {
+                state.data.envelopeLedger.push({
+                    id: actions.genId(),
+                    date,
+                    type: 'fund',
+                    category: cat,
+                    amount: toFund
+                });
+                remainingToFund -= toFund;
+                totalAutoFunded += toFund;
+            }
+        });
 
+        // 7. Set last salary date & expected salary for tracking period
+        state.data.settings.lastSalaryDate = date;
+        state.data.settings.expectedSalary = amt;
+
+        actions.recalculateBalances();
         await actions.updateDb();
-        actions.showToast("Salary Credited! Now allocate it.", "success");
-        actions.fireConfetti();
-        
-        // Jump straight to the Checklist
-        actions.renderBudgetUIOverride();
+        actions.closeModal();
+        actions.renderApp();
+        if (actions.fireConfetti) actions.fireConfetti();
+        actions.showToast(`🎉 Budget restarted! Envelopes auto-filled (AED ${totalAutoFunded.toLocaleString()}). Unallocated cash: AED ${Math.max(0, remainingToFund).toLocaleString()}.`, "success");
     } catch (err) {
         console.error(err);
         actions.showToast(err?.message ? `Salary not saved: ${err.message}` : "An error occurred while processing", "error");
@@ -1821,9 +1867,12 @@ actions.renderBudgetUIOverride = function () {
                         </div>
                         
                         <div class="flex flex-wrap gap-2.5 mt-5 justify-center lg:justify-start">
+                            <button data-finz-click="${FinzUI.handler(function(event) { return actions.openModal('salary') })}" title="Record incoming paycheck and restart the budget cycle" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20">
+                                <i data-lucide="coins" class="w-4 h-4 text-slate-950"></i> Process Salary Day
+                            </button>
                             ${hasTemplate && hasUnallocated ? FinzUI.html`
-                                <button data-finz-click="${FinzUI.handler(function(event) { return actions.applyBudgetTemplate() })}" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20">
-                                    <i data-lucide="zap" class="w-4 h-4"></i> 1-Click Auto-Fund (AED ${templateSum.toLocaleString()})
+                                <button data-finz-click="${FinzUI.handler(function(event) { return actions.applyBudgetTemplate() })}" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/40 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2">
+                                    <i data-lucide="zap" class="w-4 h-4"></i> Apply Template (AED ${templateSum.toLocaleString()})
                                 </button>
                             ` : ''}
                             <button data-finz-click="${FinzUI.handler(function(event) { return actions.openBulkBudgetEditor() })}" title="Edit and adjust all envelope budgets on one screen" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md">
@@ -2577,11 +2626,14 @@ actions.saveBudgetAsTemplate = async function() {
 };
 
 actions.applyBudgetTemplate = async function() {
-    const template = state.data.budgetTemplate;
-    if (!template || Object.keys(template).length === 0) {
-        actions.showToast("No saved template found. Click 'Save Current as Template' first!", "info");
+    const limits = (state.data.budgets && Object.keys(state.data.budgets).length > 0)
+        ? state.data.budgets
+        : (state.data.budgetTemplate || {});
+    if (!limits || Object.keys(limits).length === 0) {
+        actions.showToast("No saved budget limits found. Set category budgets first!", "info");
         return;
     }
+    const template = limits;
     const stats = actions.getEnvelopeStats();
     const totalRequired = Object.values(template).reduce((sum, v) => sum + v, 0);
     

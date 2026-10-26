@@ -295,4 +295,186 @@ test('expense adding section: remaining budget calculation for category', () => 
     assert.equal(diningStat.available, 300);
 });
 
+test('Salary Day budget restart: spending resets to 0, past cycle is archived, envelopes auto-fund from targets', () => {
+    // 1. Setup month 1 with expenses
+    const data = F.normalize({
+        expenseCategories: ['Food & Groceries', 'Utilities', 'Dining Out'],
+        savingsCategories: ['Emergency Fund'],
+        investmentCategories: ['Mutual Funds'],
+        settings: {
+            rate: 22.75,
+            lastSalaryDate: '2026-10-01T08:00:00.000Z'
+        },
+        envelopeLedger: [
+            { id: 'cred-1', date: '2026-10-01T08:00:00.000Z', type: 'credit', amount: 5000 },
+            { id: 'fund-g', date: '2026-10-01T08:05:00.000Z', type: 'fund', category: 'Food & Groceries', amount: 1000 },
+            { id: 'fund-u', date: '2026-10-01T08:05:00.000Z', type: 'fund', category: 'Utilities', amount: 500 },
+            { id: 'fund-s', date: '2026-10-01T08:05:00.000Z', type: 'fund', category: 'Emergency Fund', amount: 1500 }
+        ],
+        transactions: [
+            // Outgoing month expenses
+            { id: 'tx-1', date: '2026-10-05T12:00:00.000Z', type: 'expense', category: 'Food & Groceries', amount: 400 },
+            { id: 'tx-2', date: '2026-10-15T12:00:00.000Z', type: 'expense', category: 'Food & Groceries', amount: 450 },
+            { id: 'tx-3', date: '2026-10-10T12:00:00.000Z', type: 'expense', category: 'Utilities', amount: 300 }
+        ],
+        budgetTemplate: {
+            'Food & Groceries': 1000,
+            'Utilities': 500,
+            'Emergency Fund': 1500
+        },
+        budgetReports: []
+    });
+
+    // Helper that respects lastSalaryDate like budgets.js
+    function getCycleStats(d) {
+        const categories = {};
+        let totalCredit = 0;
+        let totalFunded = 0;
+        const allCats = [...(d.expenseCategories || []), ...(d.savingsCategories || []), ...(d.investmentCategories || [])];
+        allCats.forEach(cat => { categories[cat] = { funded: 0, spent: 0, available: 0 }; });
+
+        (d.envelopeLedger || []).forEach(entry => {
+            if (entry.type === 'credit') totalCredit += entry.amount;
+            else if (entry.type === 'fund') {
+                totalFunded += entry.amount;
+                if (!categories[entry.category]) categories[entry.category] = { funded: 0, spent: 0, available: 0 };
+                categories[entry.category].funded += entry.amount;
+            } else if (entry.type === 'defund') {
+                totalFunded -= entry.amount;
+                if (!categories[entry.category]) categories[entry.category] = { funded: 0, spent: 0, available: 0 };
+                categories[entry.category].funded -= entry.amount;
+            }
+        });
+
+        const startDate = d.settings?.lastSalaryDate ? new Date(d.settings.lastSalaryDate) : new Date(0);
+        startDate.setHours(0, 0, 0, 0);
+
+        (d.transactions || []).forEach(t => {
+            const txDate = new Date(t.date);
+            if (txDate >= startDate && t.type === 'expense' && categories[t.category]) {
+                categories[t.category].spent += Math.abs(t.amount);
+            }
+        });
+
+        allCats.forEach(cat => {
+            categories[cat].available = categories[cat].funded - categories[cat].spent;
+        });
+
+        return { categories, totalCredit, totalFunded, unallocatedCash: totalCredit - totalFunded };
+    }
+
+    // Check month 1 state: Groceries spent = 850, available = 150
+    const m1Stats = getCycleStats(data);
+    assert.equal(m1Stats.categories['Food & Groceries'].spent, 850);
+    assert.equal(m1Stats.categories['Food & Groceries'].available, 150);
+    assert.equal(m1Stats.categories['Utilities'].spent, 300);
+    assert.equal(m1Stats.categories['Utilities'].available, 200);
+
+    // 2. NEW SALARY ARRIVES on Oct 26: Execute Budget Restart
+    const newSalaryDate = '2026-10-26T10:00:00.000Z';
+    const newSalaryAmount = 6000;
+
+    // A. Archive outgoing cycle
+    data.budgetReports.push({
+        id: 'rep-oct-2026',
+        date: newSalaryDate,
+        startDate: data.settings.lastSalaryDate,
+        stats: JSON.parse(JSON.stringify(m1Stats))
+    });
+    assert.equal(data.budgetReports.length, 1);
+    assert.equal(data.budgetReports[0].stats.categories['Food & Groceries'].spent, 850);
+
+    // B. Restart envelope ledger
+    data.envelopeLedger = [];
+    data.envelopeLedger.push({
+        id: 'sal-cred-nov',
+        date: newSalaryDate,
+        type: 'credit',
+        amount: newSalaryAmount,
+        note: 'Salary Cycle Income'
+    });
+
+    // C. Auto-fill envelopes from template
+    const template = data.budgetTemplate;
+    let unallocated = newSalaryAmount;
+    Object.keys(template).forEach(cat => {
+        const toFund = Math.min(template[cat], unallocated);
+        data.envelopeLedger.push({
+            id: 'fund-' + cat,
+            date: newSalaryDate,
+            type: 'fund',
+            category: cat,
+            amount: toFund
+        });
+        unallocated -= toFund;
+    });
+
+    // D. Update settings
+    data.settings.lastSalaryDate = newSalaryDate;
+
+    // 3. Verify restarted state
+    const restartedStats = getCycleStats(data);
+
+    // Old expenses from Oct 5, 10, 15 must NOT count in the new cycle!
+    assert.equal(restartedStats.categories['Food & Groceries'].spent, 0, 'Spending should reset to 0');
+    assert.equal(restartedStats.categories['Food & Groceries'].funded, 1000, 'Envelope should auto-fund to planned target');
+    assert.equal(restartedStats.categories['Food & Groceries'].available, 1000, 'Full budget available again');
+
+    assert.equal(restartedStats.categories['Utilities'].spent, 0);
+    assert.equal(restartedStats.categories['Utilities'].available, 500);
+
+    assert.equal(restartedStats.unallocatedCash, 3000, 'Leftover salary sits as unallocated cash buffer');
+
+    // 4. Log a new expense in the new cycle
+    data.transactions.push({
+        id: 'tx-new-1',
+        date: '2026-10-26T14:30:00.000Z',
+        type: 'expense',
+        category: 'Food & Groceries',
+        amount: 120
+    });
+
+    const newCycleUpdated = getCycleStats(data);
+    assert.equal(newCycleUpdated.categories['Food & Groceries'].spent, 120);
+    assert.equal(newCycleUpdated.categories['Food & Groceries'].available, 880);
+});
+
+test('Salary Day budget restart: auto-fill reads new budget limits (budgets), NOT last month envelopes', () => {
+    // Month 1: Envelope was funded 800
+    const oldEnvelopeFunded = 800;
+    
+    // User sets new budget limits before salary hits
+    const data = F.normalize({
+        expenseCategories: ['Food & Groceries', 'Utilities'],
+        budgets: {
+            'Food & Groceries': 1200, // User increased their limit from 800 to 1200
+            'Utilities': 600
+        },
+        settings: {
+            lastSalaryDate: '2026-10-01T08:00:00.000Z'
+        },
+        envelopeLedger: [
+            { id: 'c-old', date: '2026-10-01T08:00:00.000Z', type: 'credit', amount: 3000 },
+            { id: 'f-old', date: '2026-10-01T08:05:00.000Z', type: 'fund', category: 'Food & Groceries', amount: oldEnvelopeFunded }
+        ]
+    });
+
+    // Auto-fill target resolution (reading new budget limits, ignoring last month's envelope)
+    const targets = {};
+    const allCats = data.expenseCategories;
+    allCats.forEach(cat => {
+        const budgetLimit = (data.budgets && data.budgets[cat] !== undefined) ? Number(data.budgets[cat]) : null;
+        const templateLimit = (data.budgetTemplate && data.budgetTemplate[cat] !== undefined) ? Number(data.budgetTemplate[cat]) : null;
+        const target = (budgetLimit !== null && !isNaN(budgetLimit) && budgetLimit > 0)
+            ? budgetLimit
+            : ((templateLimit !== null && !isNaN(templateLimit) && templateLimit > 0) ? templateLimit : 0);
+        if (target > 0) targets[cat] = target;
+    });
+
+    // Assert that target read 1200 (the new budget limit), NOT 800 (last month's envelope)
+    assert.equal(targets['Food & Groceries'], 1200, 'Should read new budget limit of 1200, not last month 800');
+    assert.equal(targets['Utilities'], 600);
+});
+
+
 

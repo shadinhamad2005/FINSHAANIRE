@@ -963,17 +963,26 @@ if (type === 'salary') {
             document.getElementById('modal-backdrop').classList.replace('hidden', 'flex');
             document.getElementById('modal-title').innerText = 'Process Salary Day';
             const c = document.getElementById('modal-content');
+            const expected = state.data.settings?.expectedSalary || '';
             FinzUI.setHTML(c, FinzUI.html`
                 <div class="max-w-md mx-auto bg-slate-800 p-8 md:p-10 rounded-[2.5rem] border border-slate-700 shadow-2xl text-center fade-in">
                     <div class="w-20 h-20 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
                         <i data-lucide="banknote" class="w-10 h-10"></i>
                     </div>
                     <h3 class="text-2xl font-black text-white mb-2">Salary Credited</h3>
-                    <p class="text-xs font-bold text-slate-400 mb-8">Record your incoming salary to start funding your budget envelopes.</p>
+                    <p class="text-xs font-bold text-slate-400 mb-6">Record your incoming salary to start funding your budget envelopes.</p>
                     
+                    <div class="p-3.5 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-left flex items-start gap-3 mb-6">
+                        <i data-lucide="refresh-cw" class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5"></i>
+                        <div class="text-xs">
+                            <span class="font-black text-emerald-300 uppercase tracking-wider block">Automatic Cycle Restart</span>
+                            <span class="text-slate-300 font-medium">Spending resets to AED 0.00, outgoing cycle is archived to past reports, and your standard envelope targets are auto-filled.</span>
+                        </div>
+                    </div>
+
                     <div class="mb-6 text-left">
                         <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-2 block">Total Received Amount</label>
-                        <input type="number" id="sal-amount" placeholder="0.00" class="w-full p-5 border-2 border-slate-700 bg-slate-900 text-white rounded-2xl font-black text-3xl text-center focus:border-emerald-500 outline-none text-emerald-400 num-font">
+                        <input type="number" id="sal-amount" value="${expected}" placeholder="0.00" class="w-full p-5 border-2 border-slate-700 bg-slate-900 text-white rounded-2xl font-black text-3xl text-center focus:border-emerald-500 outline-none text-emerald-400 num-font">
                     </div>
                     
                     <div class="mb-8 text-left">
@@ -983,7 +992,7 @@ if (type === 'salary') {
                         </select>
                     </div>
                     
-                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.processSalary() })}" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2">Record & Start Budgeting <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+                    <button data-finz-click="${FinzUI.handler(function(event) { return actions.processSalary() })}" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white p-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2">Record Salary & Restart Budget <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
                 </div>
             `);
             lucide.createIcons();
