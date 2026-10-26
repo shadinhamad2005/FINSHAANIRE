@@ -46,6 +46,50 @@ function getEnvelopeStats(data) {
     return { categories, totalCredit, totalFunded, unallocatedCash };
 }
 
+// Helper that respects lastSalaryDate and credit start date like budgets.js
+function getCycleStats(d) {
+    const categories = {};
+    let totalCredit = 0;
+    let totalFunded = 0;
+    const allCats = [...(d.expenseCategories || []), ...(d.savingsCategories || []), ...(d.investmentCategories || [])];
+    allCats.forEach(cat => { categories[cat] = { funded: 0, spent: 0, available: 0 }; });
+
+    (d.envelopeLedger || []).forEach(entry => {
+        if (entry.type === 'credit') totalCredit += entry.amount;
+        else if (entry.type === 'fund') {
+            totalFunded += entry.amount;
+            if (!categories[entry.category]) categories[entry.category] = { funded: 0, spent: 0, available: 0 };
+            categories[entry.category].funded += entry.amount;
+        } else if (entry.type === 'defund') {
+            totalFunded -= entry.amount;
+            if (!categories[entry.category]) categories[entry.category] = { funded: 0, spent: 0, available: 0 };
+            categories[entry.category].funded -= entry.amount;
+        }
+    });
+
+    const firstCredit = (d.envelopeLedger || []).find(e => e.type === 'credit');
+    const startDate = d.settings?.lastSalaryDate
+        ? new Date(d.settings.lastSalaryDate)
+        : (firstCredit ? new Date(firstCredit.date) : null);
+
+    if (startDate) {
+        startDate.setHours(0, 0, 0, 0);
+
+        (d.transactions || []).forEach(t => {
+            const txDate = new Date(t.date);
+            if (txDate >= startDate && t.type === 'expense' && categories[t.category]) {
+                categories[t.category].spent += Math.abs(t.amount);
+            }
+        });
+    }
+
+    allCats.forEach(cat => {
+        categories[cat].available = categories[cat].funded - categories[cat].spent;
+    });
+
+    return { categories, totalCredit, totalFunded, unallocatedCash: totalCredit - totalFunded };
+}
+
 test('envelope budgeting: transferring accidental 250 AED from Mutual Funds to Savings', () => {
     const data = F.normalize({
         expenseCategories: ['Rent', 'Groceries'],
@@ -325,44 +369,6 @@ test('Salary Day budget restart: spending resets to 0, past cycle is archived, e
         budgetReports: []
     });
 
-    // Helper that respects lastSalaryDate like budgets.js
-    function getCycleStats(d) {
-        const categories = {};
-        let totalCredit = 0;
-        let totalFunded = 0;
-        const allCats = [...(d.expenseCategories || []), ...(d.savingsCategories || []), ...(d.investmentCategories || [])];
-        allCats.forEach(cat => { categories[cat] = { funded: 0, spent: 0, available: 0 }; });
-
-        (d.envelopeLedger || []).forEach(entry => {
-            if (entry.type === 'credit') totalCredit += entry.amount;
-            else if (entry.type === 'fund') {
-                totalFunded += entry.amount;
-                if (!categories[entry.category]) categories[entry.category] = { funded: 0, spent: 0, available: 0 };
-                categories[entry.category].funded += entry.amount;
-            } else if (entry.type === 'defund') {
-                totalFunded -= entry.amount;
-                if (!categories[entry.category]) categories[entry.category] = { funded: 0, spent: 0, available: 0 };
-                categories[entry.category].funded -= entry.amount;
-            }
-        });
-
-        const startDate = d.settings?.lastSalaryDate ? new Date(d.settings.lastSalaryDate) : new Date(0);
-        startDate.setHours(0, 0, 0, 0);
-
-        (d.transactions || []).forEach(t => {
-            const txDate = new Date(t.date);
-            if (txDate >= startDate && t.type === 'expense' && categories[t.category]) {
-                categories[t.category].spent += Math.abs(t.amount);
-            }
-        });
-
-        allCats.forEach(cat => {
-            categories[cat].available = categories[cat].funded - categories[cat].spent;
-        });
-
-        return { categories, totalCredit, totalFunded, unallocatedCash: totalCredit - totalFunded };
-    }
-
     // Check month 1 state: Groceries spent = 850, available = 150
     const m1Stats = getCycleStats(data);
     assert.equal(m1Stats.categories['Food & Groceries'].spent, 850);
@@ -474,6 +480,57 @@ test('Salary Day budget restart: auto-fill reads new budget limits (budgets), NO
     // Assert that target read 1200 (the new budget limit), NOT 800 (last month's envelope)
     assert.equal(targets['Food & Groceries'], 1200, 'Should read new budget limit of 1200, not last month 800');
     assert.equal(targets['Utilities'], 600);
+});
+
+test('Reset budget section: clearing envelope ledger and lastSalaryDate does NOT pull historical transactions into deficit', () => {
+    // User has multiple historical transactions
+    const data = F.normalize({
+        expenseCategories: ['Family', 'Mobile Recharge', 'Dining Out', 'Gym', 'Gifts'],
+        savingsCategories: ['Emergency Fund'],
+        investmentCategories: ['Mutual Funds'],
+        settings: {
+            rate: 22.75,
+            lastSalaryDate: '2026-10-01T08:00:00.000Z'
+        },
+        transactions: [
+            { id: 'tx-1', date: '2026-10-05T12:00:00.000Z', type: 'expense', category: 'Family', amount: 934.50 },
+            { id: 'tx-2', date: '2026-10-10T12:00:00.000Z', type: 'expense', category: 'Mobile Recharge', amount: 100 },
+            { id: 'tx-3', date: '2026-10-15T12:00:00.000Z', type: 'expense', category: 'Dining Out', amount: 98.05 },
+            { id: 'tx-4', date: '2026-10-20T12:00:00.000Z', type: 'expense', category: 'Gym', amount: 332 }
+        ],
+        envelopeLedger: [
+            { id: 'c1', date: '2026-10-01T08:00:00.000Z', type: 'credit', amount: 5000 },
+            { id: 'f1', date: '2026-10-01T08:05:00.000Z', type: 'fund', category: 'Family', amount: 1000 }
+        ]
+    });
+
+    // 1. Simulate Reset Budget System action:
+    data.envelopeLedger = [];
+    data.budgets = {};
+    data.budgetReports = [];
+    data.settings.expectedSalary = 0;
+    delete data.settings.lastSalaryDate;
+
+    // 2. Compute stats after reset
+    const postResetStats = getCycleStats(data);
+
+    // 3. Must NOT pull in the 934.50, 100, 98.05, 332 past transactions as current cycle spending
+    assert.equal(postResetStats.categories['Family'].spent, 0, 'Family spent must be 0 after reset');
+    assert.equal(postResetStats.categories['Family'].funded, 0, 'Family funded must be 0');
+    assert.equal(postResetStats.categories['Family'].available, 0, 'Family available must be 0, not in deficit');
+
+    assert.equal(postResetStats.categories['Mobile Recharge'].spent, 0);
+    assert.equal(postResetStats.categories['Mobile Recharge'].available, 0);
+
+    assert.equal(postResetStats.categories['Dining Out'].spent, 0);
+    assert.equal(postResetStats.categories['Dining Out'].available, 0);
+
+    assert.equal(postResetStats.categories['Gym'].spent, 0);
+    assert.equal(postResetStats.categories['Gym'].available, 0);
+
+    assert.equal(postResetStats.totalCredit, 0);
+    assert.equal(postResetStats.totalFunded, 0);
+    assert.equal(postResetStats.unallocatedCash, 0);
 });
 
 

@@ -784,7 +784,7 @@ actions.getEnvelopeStats = function() {
     } else if (firstCredit) {
         envelopeStartDate = new Date(firstCredit.date);
     } else {
-        envelopeStartDate = new Date(0);
+        envelopeStartDate = null;
     }
     
     let stats = {
@@ -814,18 +814,20 @@ actions.getEnvelopeStats = function() {
         }
     });
 
-    const startBoundary = new Date(envelopeStartDate);
-    startBoundary.setHours(0, 0, 0, 0);
+    if (envelopeStartDate) {
+        const startBoundary = new Date(envelopeStartDate);
+        startBoundary.setHours(0, 0, 0, 0);
 
-    tx.forEach(t => {
-        const txDate = new Date(t.date);
-        if (txDate >= startBoundary) {
-            if ((t.type === 'expense' || t.type === 'transfer_out') && t.category && !t.excludeFromBudget) {
-                if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
-                stats.categories[t.category].spent += actions.getTransactionBaseAmount(t);
+        tx.forEach(t => {
+            const txDate = new Date(t.date);
+            if (txDate >= startBoundary) {
+                if ((t.type === 'expense' || t.type === 'transfer_out') && t.category && !t.excludeFromBudget) {
+                    if (!stats.categories[t.category]) stats.categories[t.category] = { funded: 0, spent: 0, available: 0 };
+                    stats.categories[t.category].spent += actions.getTransactionBaseAmount(t);
+                }
             }
-        }
-    });
+        });
+    }
 
     stats.unallocatedCash = stats.totalCredit - (stats.totalFunded - stats.totalDefunded);
 
@@ -1393,8 +1395,22 @@ actions.downloadBudgetReportPDF = function(id) {
 };
 
 actions.showCategoryDetails = function(cat) {
-    const txs = state.data.transactions.filter(t => (t.type === 'expense' || t.type === 'transfer_out') && t.category === cat && !t.excludeFromBudget)
-                  .sort((a,b) => new Date(b.date) - new Date(a.date));
+    const el = state.data.envelopeLedger || [];
+    const firstCredit = el.find(item => item.type === 'credit');
+    let envelopeStartDate = null;
+    if (state.data.settings?.lastSalaryDate) {
+        envelopeStartDate = new Date(state.data.settings.lastSalaryDate);
+    } else if (firstCredit) {
+        envelopeStartDate = new Date(firstCredit.date);
+    }
+    const startBoundary = envelopeStartDate ? new Date(envelopeStartDate) : null;
+    if (startBoundary) startBoundary.setHours(0, 0, 0, 0);
+
+    const txs = state.data.transactions.filter(t => {
+        if (!((t.type === 'expense' || t.type === 'transfer_out') && t.category === cat && !t.excludeFromBudget)) return false;
+        if (!startBoundary) return false;
+        return new Date(t.date) >= startBoundary;
+    }).sort((a,b) => new Date(b.date) - new Date(a.date));
                   
     const stats = actions.getEnvelopeStats().categories[cat] || { funded: 0, spent: 0, available: 0 };
     const envelopeHistory = (state.data.envelopeLedger || []).filter(e => e.category === cat)
@@ -3063,14 +3079,28 @@ actions.saveCategoryBudgetAllocation = async function(cat) {
 actions.resetCategoryAllocation = async function(cat) {
     const stats = actions.getEnvelopeStats();
     const currentFunded = stats.categories[cat]?.funded || 0;
+    const currentSpent = stats.categories[cat]?.spent || 0;
+    const currentAvailable = stats.categories[cat]?.available || 0;
+
     if (currentFunded <= 0) {
         actions.showToast(`${cat} has no funds allocated.`, "info");
         return;
     }
 
+    const releasable = Math.max(0, currentAvailable);
+    if (currentSpent > 0 && releasable <= 0) {
+        actions.showToast(`Cannot clear allocation: ${cat} has already spent AED ${currentSpent.toLocaleString()} this cycle. Defunding would create an active deficit.`, "error");
+        return;
+    }
+
+    const amountToRelease = (currentSpent > 0) ? releasable : currentFunded;
+    const confirmMsg = (currentSpent > 0)
+        ? `${cat} has spent AED ${currentSpent.toLocaleString()} of its AED ${currentFunded.toLocaleString()} allocation.\n\nRelease the remaining unspent AED ${amountToRelease.toLocaleString()} back to Unallocated Cash?`
+        : `Are you sure you want to release all AED ${amountToRelease.toLocaleString()} from ${cat} back to Unallocated Cash?`;
+
     actions.showConfirm(
         "Clear Envelope Allocation",
-        `Are you sure you want to release all AED ${currentFunded.toLocaleString()} from ${cat} back to Unallocated Cash?`,
+        confirmMsg,
         async () => {
             state.data.envelopeLedger = state.data.envelopeLedger || [];
             state.data.envelopeLedger.push({
@@ -3078,18 +3108,18 @@ actions.resetCategoryAllocation = async function(cat) {
                 date: new Date().toISOString(),
                 type: 'defund',
                 category: cat,
-                amount: currentFunded
+                amount: amountToRelease
             });
 
             if (state.data.budgetTemplate && state.data.budgetTemplate[cat] !== undefined) {
                 delete state.data.budgetTemplate[cat];
             }
             if (state.data.budgets && state.data.budgets[cat] !== undefined) {
-                state.data.budgets[cat] = 0;
+                state.data.budgets[cat] = currentSpent > 0 ? currentSpent : 0;
             }
 
             await actions.updateDb();
-            actions.showToast(`Released AED ${currentFunded.toLocaleString()} from ${cat} back to Unallocated Cash!`, "success");
+            actions.showToast(`Released AED ${amountToRelease.toLocaleString()} from ${cat} back to Unallocated Cash!`, "success");
             actions.renderBudgetUIOverride();
         }
     );

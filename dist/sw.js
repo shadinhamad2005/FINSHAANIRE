@@ -1,6 +1,6 @@
 // Offline shell for FINZ. Network first: online you always get the latest build; offline you get the last one seen.
 // Only this app's own GET requests are handled. Firebase, rates and fonts always go straight to the network.
-const CACHE_NAME = 'finz-v17-2.9.0';
+const CACHE_NAME = 'finz-v18-2.9.0';
 const ASSETS = [
     './',
     './index.html',
