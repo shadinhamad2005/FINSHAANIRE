@@ -1316,6 +1316,7 @@ if (type === 'credit_score') {
                                 <input type="number" id="tam" placeholder="0.00" data-finz-input="${FinzUI.handler(function(event) { return actions.checkBudgetWarning() })}" class="w-full p-4 border border-slate-700 rounded-xl font-black text-center bg-slate-900 text-white focus:border-rose-500 outline-none num-font">
                             </div>
                         </div>
+                        <div id="tx-category-budget-info" class="mb-4 text-left transition-all"></div>
                         <div class="grid grid-cols-3 gap-4 mb-4 text-left">
                             <div class="col-span-2">
                                 <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2 mb-1 block">Note (Optional)</label>
@@ -1344,6 +1345,7 @@ if (type === 'credit_score') {
                     </div>`);
                     setTimeout(() => {
                         if (typeof actions.onTxAccountChange === 'function') actions.onTxAccountChange();
+                        if (typeof actions.checkBudgetWarning === 'function') actions.checkBudgetWarning();
                     }, 20);
                     break;
                 case 'transfer': t.innerText = 'Transfer & Remittance'; FinzUI.setHTML(c, FinzUI.html`

@@ -947,6 +947,7 @@ actions.editTransaction = (id) => {
             original.replaceWith(btn);
             btn.innerText = "Update Entry";
             btn.onclick = () => actions.updateTransaction(id);
+            if (typeof actions.checkBudgetWarning === 'function') actions.checkBudgetWarning();
         };
 
 const transferParts = groupId => {

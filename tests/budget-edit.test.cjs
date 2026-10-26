@@ -255,3 +255,44 @@ test('envelope budgeting: deleting category auto-defunds active allocation', () 
     assert.equal(stats.categories['Old Fund'].funded, 0);
 });
 
+test('expense adding section: remaining budget calculation for category', () => {
+    const data = F.normalize({
+        expenseCategories: ['Food & Groceries', 'Dining Out'],
+        envelopeLedger: [
+            { id: 'c1', date: '2026-10-01', type: 'credit', amount: 4000 },
+            { id: 'f1', date: '2026-10-01', type: 'fund', category: 'Food & Groceries', amount: 1000 },
+            { id: 'f2', date: '2026-10-01', type: 'fund', category: 'Dining Out', amount: 300 }
+        ],
+        transactions: [
+            { id: 't1', accountId: 'acc1', type: 'expense', category: 'Food & Groceries', amount: 350, date: '2026-10-05' }
+        ]
+    });
+
+    const stats = getEnvelopeStats(data);
+    
+    // Food & Groceries: 1000 funded, 350 spent -> 650 left
+    const groceryStat = stats.categories['Food & Groceries'];
+    assert.equal(groceryStat.funded, 1000);
+    assert.equal(groceryStat.spent, 350);
+    assert.equal(groceryStat.available, 650);
+
+    // If an expense of 200 is being added:
+    const newExpenseAmt = 200;
+    const remainingAfter = groceryStat.available - newExpenseAmt;
+    assert.equal(remainingAfter, 450);
+    assert.ok(remainingAfter >= 0); // Within budget
+
+    // If an expense of 700 is being added:
+    const overExpenseAmt = 700;
+    const overRemaining = groceryStat.available - overExpenseAmt;
+    assert.equal(overRemaining, -50); // Exceeds budget by 50
+    assert.ok(overRemaining < 0);
+
+    // Dining Out: 300 funded, 0 spent -> 300 left
+    const diningStat = stats.categories['Dining Out'];
+    assert.equal(diningStat.funded, 300);
+    assert.equal(diningStat.spent, 0);
+    assert.equal(diningStat.available, 300);
+});
+
+

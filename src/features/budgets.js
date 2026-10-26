@@ -472,40 +472,185 @@ actions.printSalary = function () {
             window.print();
         };
 
-actions.checkBudgetWarning = function () {
-            const typeEl = document.getElementById('tt');
-            const warningEl = document.getElementById('tx-warning');
-            if (!typeEl || !warningEl) return;
-            
-            const type = typeEl.value;
-            const isExcluded = document.getElementById('tx-exclude-budget')?.checked || false;
-            if (type !== 'expense' || isExcluded) {
-                warningEl.classList.add('hidden');
-                return;
-            }
-            const cat = document.getElementById('tc').value;
-            const amt = parseFloat(document.getElementById('tam').value) || 0;
-            
-            // Calculate current spending for this category this month
-            const now = new Date();
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-            
-            let spent = 0;
-            state.data.transactions.forEach(t => {
-                if (t.type === 'expense' && t.category === cat && !t.excludeFromBudget && t.date >= startOfMonth) {
-                    spent += actions.getTransactionBaseAmount(t);
-                }
-            });
+actions.updateTxBudgetStatus = actions.checkBudgetWarning = function () {
+    const typeEl = document.getElementById('tt');
+    const warningEl = document.getElementById('tx-warning');
+    const budgetCardEl = document.getElementById('tx-category-budget-info');
+    if (!typeEl) return;
+    
+    const type = typeEl.value;
+    const isExcluded = document.getElementById('tx-exclude-budget')?.checked || false;
+    const cat = document.getElementById('tc')?.value;
+    const amtRaw = parseFloat(document.getElementById('tam')?.value) || 0;
 
-            const budget = state.data.budgets ? (state.data.budgets[cat] || 0) : 0;
-            
-            if (budget > 0 && (spent + amt) > budget) {
-                warningEl.innerText = `WARNING: This expense exceeds your monthly ${cat} budget by ${((spent + amt) - budget).toFixed(2)}`;
-                warningEl.classList.remove('hidden');
+    // Convert amount to AED base currency if account currency is INR
+    const aId = document.getElementById('ta')?.value;
+    const acc = (state.data?.accounts || []).find(a => a.id === aId);
+    const accCur = acc?.currency || 'AED';
+    const r = parseFloat(state.data?.settings?.rate) || 22.75;
+    const amtInAED = accCur === 'INR' ? (r > 0 ? amtRaw / r : amtRaw) : amtRaw;
+
+    if (type !== 'expense') {
+        if (warningEl) warningEl.classList.add('hidden');
+        if (budgetCardEl) budgetCardEl.classList.add('hidden');
+        return;
+    }
+
+    if (isExcluded) {
+        if (warningEl) warningEl.classList.add('hidden');
+        if (budgetCardEl) {
+            budgetCardEl.classList.remove('hidden');
+            FinzUI.setHTML(budgetCardEl, FinzUI.html`
+                <div class="p-3.5 bg-slate-900/80 border border-slate-700/80 rounded-2xl flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2 text-slate-300 font-bold">
+                        <div class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Monthly Budget Tracking</span>
+                            <span class="text-xs text-slate-200 font-bold">Excluded from Budget (Paid from savings / capital)</span>
+                        </div>
+                    </div>
+                    <span class="text-[10px] text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 font-bold">Not Deducted</span>
+                </div>
+            `);
+            if (libraries.lucide) libraries.lucide.createIcons();
+        }
+        return;
+    }
+
+    if (!cat) {
+        if (warningEl) warningEl.classList.add('hidden');
+        if (budgetCardEl) budgetCardEl.classList.add('hidden');
+        return;
+    }
+
+    // Retrieve Envelope Stats (and legacy budget fallback if any)
+    const stats = (typeof actions.getEnvelopeStats === 'function') ? actions.getEnvelopeStats() : null;
+    const cStat = stats?.categories?.[cat] || { funded: 0, spent: 0, available: 0 };
+    const funded = cStat.funded || 0;
+    const spent = cStat.spent || 0;
+    const available = cStat.available || 0;
+    const legacyBudget = (state.data?.budgets && state.data.budgets[cat]) ? state.data.budgets[cat] : (state.data?.budgetTemplate && state.data.budgetTemplate[cat] ? state.data.budgetTemplate[cat] : 0);
+    const effectiveBudget = funded > 0 ? funded : legacyBudget;
+
+    if (warningEl) warningEl.classList.add('hidden'); // Modern card handles both status and alerts
+
+    if (!budgetCardEl) return;
+    budgetCardEl.classList.remove('hidden');
+
+    if (effectiveBudget <= 0 && funded <= 0) {
+        FinzUI.setHTML(budgetCardEl, FinzUI.html`
+            <div class="p-3.5 bg-slate-900/80 border border-slate-700/80 rounded-2xl flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2.5 text-slate-300 font-bold">
+                    <div class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                        <i data-lucide="info" class="w-4 h-4 text-slate-400"></i>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Budget for ${cat}</span>
+                        <span class="text-xs text-slate-300 font-bold">No budget envelope allocated (AED 0.00)</span>
+                    </div>
+                </div>
+                <span class="text-[10px] text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 font-bold">Unbudgeted</span>
+            </div>
+        `);
+    } else {
+        const remainingAfter = available - amtInAED;
+        const isOver = remainingAfter < -0.005;
+        const pctUsed = effectiveBudget > 0 ? Math.min(100, Math.round(((spent + amtInAED) / effectiveBudget) * 100)) : 100;
+        const inrHint = (accCur === 'INR' && amtRaw > 0) ? FinzUI.html`<span class="text-[9px] text-slate-400 block font-normal">(INR ${amtRaw.toLocaleString()} ≈ AED ${amtInAED.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})})</span>` : '';
+
+        if (amtRaw <= 0) {
+            // User just selected category, before typing amount
+            if (available >= 0) {
+                FinzUI.setHTML(budgetCardEl, FinzUI.html`
+                    <div class="p-3.5 bg-emerald-950/30 border border-emerald-500/40 rounded-2xl flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                                <i data-lucide="wallet" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Remaining Budget for ${cat}</span>
+                                <span class="text-sm font-black text-emerald-400 num-font">AED ${available.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} left</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] font-bold text-slate-300 block">Spent AED ${spent.toLocaleString(undefined, {maximumFractionDigits: 2})} of AED ${effectiveBudget.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                            <div class="w-24 bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden ml-auto border border-slate-700">
+                                <div class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: ${Math.min(100, Math.round((spent / effectiveBudget) * 100))}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `);
             } else {
-                warningEl.classList.add('hidden');
+                FinzUI.setHTML(budgetCardEl, FinzUI.html`
+                    <div class="p-3.5 bg-rose-950/40 border border-rose-500/50 rounded-2xl flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <span class="text-[10px] font-bold text-rose-300 uppercase tracking-wider block">Budget Exceeded for ${cat}</span>
+                                <span class="text-sm font-black text-rose-400 num-font">AED ${Math.abs(available).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} deficit</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] font-bold text-rose-300 block">100% Spent (${spent.toLocaleString()} / ${effectiveBudget.toLocaleString()})</span>
+                            <span class="text-[9px] text-slate-400">Additional expenses will increase deficit</span>
+                        </div>
+                    </div>
+                `);
             }
-        };
+        } else if (!isOver) {
+            // Typing amount and WITHIN budget
+            FinzUI.setHTML(budgetCardEl, FinzUI.html`
+                <div class="p-3.5 bg-emerald-950/30 border border-emerald-500/40 rounded-2xl flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Remaining After This Expense</span>
+                            <span class="text-sm font-black text-emerald-400 num-font">AED ${remainingAfter.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} left</span>
+                            <span class="text-[10px] text-slate-400 block">(AED ${available.toLocaleString(undefined, {maximumFractionDigits: 2})} available - AED ${amtInAED.toLocaleString(undefined, {maximumFractionDigits: 2})})</span>
+                            ${inrHint}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] font-black text-emerald-300 block">✓ Within Budget (${pctUsed}%)</span>
+                        <div class="w-24 bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden ml-auto border border-slate-700">
+                            <div class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: ${pctUsed}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `);
+        } else {
+            // Typing amount and EXCEEDING budget
+            const overAmount = Math.abs(remainingAfter);
+            FinzUI.setHTML(budgetCardEl, FinzUI.html`
+                <div class="p-3.5 bg-rose-950/50 border border-rose-500/60 rounded-2xl flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                            <i data-lucide="alert-octagon" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <span class="text-[10px] font-black text-rose-300 uppercase tracking-wider block">WARNING: Exceeds Remaining Budget</span>
+                            <span class="text-sm font-black text-rose-400 num-font">Exceeds budget by AED ${overAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            <span class="text-[10px] text-slate-400 block">Available: AED ${Math.max(0, available).toLocaleString(undefined, {maximumFractionDigits: 2})} • Entering: AED ${amtInAED.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                            ${inrHint}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[10px] font-bold text-rose-300 block">Shortfall: AED ${overAmount.toLocaleString()}</span>
+                        <span class="text-[9px] text-slate-400">Can cover later in Budget</span>
+                    </div>
+                </div>
+            `);
+        }
+    }
+
+    if (libraries.lucide) libraries.lucide.createIcons();
+};
 
 actions.startBudgetWizard = function (step = 1) {
     actions.budgetWizardState = actions.budgetWizardState || {
@@ -2140,16 +2285,32 @@ actions.renderCategoryOptions = function (includeNone = false) {
     const exp = state.data?.expenseCategories || [];
     const sav = state.data?.savingsCategories || [];
     const inv = state.data?.investmentCategories || [];
+    const stats = (typeof actions.getEnvelopeStats === 'function') ? actions.getEnvelopeStats() : null;
+
+    const renderOpt = (c) => {
+        const cStat = stats?.categories?.[c];
+        const funded = cStat?.funded || 0;
+        const legacyTarget = (state.data?.budgets && state.data.budgets[c]) || (state.data?.budgetTemplate && state.data.budgetTemplate[c]) || 0;
+        const effectiveBudget = funded > 0 ? funded : legacyTarget;
+        if (effectiveBudget > 0) {
+            const avail = funded > 0 ? (cStat.available || 0) : (effectiveBudget - (cStat?.spent || 0));
+            const availText = avail >= 0
+                ? `AED ${avail.toLocaleString(undefined, { maximumFractionDigits: 0 })} left`
+                : `AED ${Math.abs(avail).toLocaleString(undefined, { maximumFractionDigits: 0 })} over`;
+            return FinzUI.html`<option value="${c}">${c} (${availText})</option>`;
+        }
+        return FinzUI.html`<option value="${c}">${c}</option>`;
+    };
     
     let html = includeNone ? FinzUI.literal("<option value=\"\">-- None (Just a Transfer) --</option>") : '';
     if (exp.length > 0) {
-        html += FinzUI.html`<optgroup label="🛒 Living Expenses">${exp.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')}</optgroup>`;
+        html += FinzUI.html`<optgroup label="🛒 Living Expenses">${exp.map(renderOpt).join('')}</optgroup>`;
     }
     if (sav.length > 0) {
-        html += FinzUI.html`<optgroup label="🛡️ Savings & Sinking Funds">${sav.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')}</optgroup>`;
+        html += FinzUI.html`<optgroup label="🛡️ Savings & Sinking Funds">${sav.map(renderOpt).join('')}</optgroup>`;
     }
     if (inv.length > 0) {
-        html += FinzUI.html`<optgroup label="📈 Investments">${inv.map(c => FinzUI.html`<option value="${c}">${c}</option>`).join('')}</optgroup>`;
+        html += FinzUI.html`<optgroup label="📈 Investments">${inv.map(renderOpt).join('')}</optgroup>`;
     }
     return html;
 };
